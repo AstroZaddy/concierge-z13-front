@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Cosmic starfield */
+body {
+  @apply bg-cosmic-dark text-white;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(2px 2px at 20px 30px, rgba(255,255,255,0.08), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.05), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.07), transparent),
+    radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.03), transparent),
+    linear-gradient(180deg, #0d1117 0%, #0b0f1a 100%);
+  animation: twinkle 20s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  from { opacity: 0.85; }
+  to { opacity: 1; }
+}

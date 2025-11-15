@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@theme {
+  --color-neon-cyan: #38bdf8;
+  --color-neon-purple: #a855f7;
+  --color-neon-magenta: #d946ef;
+  --color-neon-yellow: #facc15;
+  
+  --shadow-neon: 0 0 18px rgba(56, 189, 248, 0.6);
+  --shadow-neon-magenta: 0 0 18px rgba(217, 70, 239, 0.6);
+}
+
+/* Global Cosmic Theme */
+body {
+  @apply bg-[#0a0a12] text-gray-200 antialiased;
+  background-image: radial-gradient(
+      600px at 50% 0%,
+      rgba(120, 119, 198, 0.15),
+      transparent 80%
+    ),
+    radial-gradient(
+      800px at 80% 120%,
+      rgba(56, 189, 248, 0.15),
+      transparent 80%
+    );
+  background-attachment: fixed;
+}
+
+
+
+/* Neon glow helpers */
+.shadow-neon {
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.7);
+}
+
+.shadow-neon-magenta {
+  box-shadow: 0 0 15px rgba(217, 70, 239, 0.7);
+}
+
+.border-neon-cyan {
+  border: 1px solid rgba(56, 189, 248, 0.5);
+}
+
+.border-neon-purple {
+  border: 1px solid rgba(168, 85, 247, 0.5);
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400 text-transparent bg-clip-text;
+}
+
+/* Neon gradient backgrounds */
+.bg-neon-gradient {
+  background: linear-gradient(135deg, #a855f7 0%, #d946ef 50%, #38bdf8 100%);
+}
+
+.bg-neon-purple-blue {
+  background: linear-gradient(135deg, #a855f7 0%, #38bdf8 100%);
+}
