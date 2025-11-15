@@ -1,0 +1,195 @@
+---
+import MainLayout from "../layouts/MainLayout.astro";
+import { Footer } from "../layouts/Footer.jsx";
+import "../styles/global.css";
+import { ConstellationDivider } from "../components/ui/ConstellationDivider.jsx";
+const gradient = "bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400 text-transparent bg-clip-text";
+---
+
+<MainLayout>
+  <body class="bg-[#0a0a12] text-gray-200 antialiased">
+    <main class="max-w-3xl mx-auto px-6 py-20 space-y-16">
+
+      <!-- Header -->
+      <header class="text-center space-y-4">
+        <h1 class="text-4xl md:text-5xl font-bold">
+          The <span class={gradient}>Z13 Story</span>
+        </h1>
+        <p class="text-gray-400 text-lg">
+          How a throwaway comment turned into a new way of looking at the sky.
+        </p>
+      </header>
+
+      <!-- Section 1 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>It started with a throwaway comment from a friend.</p>
+        <p>
+          One of those comments that comes up after the second Americano during a Sunday morning <span class="italic text-gray-300">bear your soul</span> kind of coffee date. 
+          I was yapping on about how I was at a phase in my life when everything seemed to be shifting -
+          old layers being shed, new ones being built. She tilted her head and said,
+          <span class={gradient}>"Sounds like your Saturn return is hitting hard."</span>
+        </p>
+        <p>I blinked. "My what?"</p>
+        <p>
+          I'd never really been into astrology. Horoscope columns seemed to fit like
+          off-the-rack clothing - kind of, but not really. But she was an old soul,
+          and something about the way she said it - with that knowing glint -
+          pulled me in.
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 2 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>So I started poking around.</p>
+        <p>
+          Looked up my birth chart on a few of the big astrology sites. Found Saturn.
+          Found the dates. Started tracking. It was interesting, sure ...
+          but something didn't quite click.
+        </p>
+        <p>
+          That's when my friend said:
+          <span class={gradient}>
+            "You're a Scorpio in tropical. But I'd bet your Sun's actually in Libra,
+            or maybe Virgo. They both fit your energy. <br />
+            You should check sidereal -
+            it uses the real sky."
+          </span>
+        </p>
+        <p><strong>Wait. Real sky?</strong></p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 3 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>I had no idea what she meant - but I looked it up.</p>
+        <p>
+          I pulled a sidereal chart. I ran the data. I checked <a href="https://stellarium-web.org/" target="_blank">Stellarium</a> to check out the actual star map for the
+          day I was born.
+        </p>
+        <p class="font-semibold">
+          And sure enough - the Sun was in Virgo. Not Scorpio. Not even close.
+        </p>
+        <p>
+          Cue the existential double take.
+        </p>
+        <p>
+          As I dove deeper, something lit up. I started comparing the actual sky
+          placements of my planets with my personality and events in my real life. </p>
+          <p class="font-semibold">
+          It wasn't just "kind of accurate."
+        </p>
+        <p class="italic text-gray-300">It was uncannily true!</p>
+      </section>
+
+      <!-- Section 4 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          Patterns emerged. My whole life started making more sense - not in a
+          deterministic "<span class="italic text-gray-300">on Thursday, you be near water when you meet a new person who will change your life</span>" way.
+          More of a soul-map kind of way like when you have a friend who just gets you without you having to explain yourself.
+        </p>
+        <p>
+          And that's when I had to hand in my astrology skeptic badge. Because
+          whatever this was ... it worked.
+        </p>
+        <p>
+          Better than any MBTI or Enneagram. More nuanced than any personality test.
+          This was alive. Cosmic. Deep.
+        </p>
+        <p>
+          Then I got curious. (Of course I did - I'm a Virgo!)
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 5 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          I found out that the zodiac used by most of Western astrology -
+          <strong>the tropical zodiac</strong> - was frozen in time over
+          2,000 years ago. It no longer lines up with the stars.
+        </p>
+        <p>
+          Due to <strong>precession</strong> (a slow wobble in Earth's rotation),
+          everything had shifted by about 23.5 degrees. Which means ... <br />
+        </p>
+
+        <p class="font-semibold text-xl">
+          The signs we've been taught? They don't match the sky anymore.
+        </p>
+
+        <p>
+          So I went further back. Into older systems. Ancient skywatchers.
+          Real-sky astrology before it got simplified and standardized.
+        </p>
+
+        <p class="font-semibold">
+          And that's when I found the 13th sign.
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Ophiuchus -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          <span class={gradient}>Ophiuchus.</span>  
+        The Serpent Bearer - long omitted because he didn't fit the 12-sign grid.
+        </p>
+        <p>
+          Turns out, the signs aren't evenly spaced. Some - like Virgo -
+          stretch 45 degrees wide. Others, like Scorpio, only cover 7.
+        </p>
+        <p class="italic text-gray-300">
+          The sky doesn't care about neat geometry.  
+          It tells the truth as it is.
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 6 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl pb-16">
+        <p>So I brought it all together, in a way that was very much true to my Virgo nature: <br />
+
+        <ul class="list-disc pl-6 space-y-3 text-gray-300">
+          <li>Sidereal signs based on the actual constellations</li>
+          <li>True boundaries not rounded off for convenience</li>
+          <li>Precise astronomical data because the stars deserve it</li>
+          <li>And yeah ... a <strong>13th house</strong></li>
+        </ul>
+
+        <p>
+          Because when you start seeing the whole cycle, there's a space beyond endings.  
+          A place of synthesis.  
+          And it felt right.
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 6 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl pb-16">
+        <p>Does this mean that sidereal astrology is more "true" than tropical astrology?</p>
+
+        <p>
+          Not at all. Both are mirrors that cast a reflection of you from different angles.<br /> 
+         Both provide guidance and insight. Take a look at both, and choose the guide that feels right for you.</p>  
+        <p class="italic text-gray-300">But for me, sidereal astrology feels like a better fit. Especially the Z13 style that 
+            views the real sky and the actual constellations as the starting point of understanding. </p>
+            
+            <p class="italic text-gray-300">But you do you. ;)</p>
+
+            <p class="text-center font-semibold">
+              Here at Z13 Astrology, we're serving up both flavors -  
+              <span class={gradient}>pick your favorite!</span>
+            </p>
+      </section>
+
+    </main>
+    <Footer client:load />
+  </MainLayout>

@@ -1,9 +1,19 @@
 ---
 import "../styles/global.css";
+import { Navbar } from "../layouts/Navbar.jsx";
+import { ParallaxStarfield } from "../components/ui/ParallaxStarfield.jsx";
 ---
 
 <html lang="en">
-  <body>
-    <slot />
+  <body class="bg-[#0a0a12] text-gray-200 antialiased">
+
+    <ParallaxStarfield client:load />
+
+    <Navbar client:load />
+
+    <div class="pt-20">
+      <slot />
+    </div>
+
   </body>
 </html>
