@@ -56,7 +56,7 @@ export function DualSystemSection() {
             title="Z13 True-Sky Zodiac"
           >
             <p className="mb-4">
-              The astronomical zodiac based on where the constellations actually are in the sky—
+              The astronomical zodiac based on where the constellations actually are in the sky-
               calculated using NASA JPL ephemeris data.
             </p>
             <a

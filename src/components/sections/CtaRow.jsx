@@ -16,7 +16,7 @@ export function CtaRow() {
             title="Find Your Real Sign"
           >
             <p>
-              Discover your Tropical <strong>and</strong> Z13 True-Sky signs —
+              Discover your Tropical <strong>and</strong> Z13 True-Sky signs -
               side-by-side. Accurate, personal, and eye-opening.
             </p>
           </NeonCard>
@@ -36,7 +36,7 @@ export function CtaRow() {
         </a>
 
         {/* Card 3 */}
-        <a href="/lunar-events" className="block">
+        <a href="/lunar" className="block">
           <NeonCard
             icon={<Moon className="text-neon-magenta" size={32} />}
             title="Lunar Calendar"

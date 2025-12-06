@@ -37,7 +37,7 @@ export function ExplainerSection() {
 
           <p className="text-gray-300 leading-relaxed">
             The Z13 True-Sky zodiac follows the{" "}
-            <strong>actual constellations</strong> in space — with their real
+            <strong>actual constellations</strong> in space - with their real
             sizes, boundaries, and positions. It’s astronomy-accurate and
             calculated directly from NASA JPL data.
           </p>

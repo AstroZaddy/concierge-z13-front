@@ -80,3 +80,6 @@ coverage/
 
 # dotenv environment variable files
 .env*.local
+
+# API documentation page (internal use only)
+src/pages/api.astro

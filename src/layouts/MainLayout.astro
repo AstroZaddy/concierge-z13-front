@@ -1,19 +1,23 @@
 ---
 import "../styles/global.css";
-import { Navbar } from "../layouts/Navbar.jsx";
 import { ParallaxStarfield } from "../components/ui/ParallaxStarfield.jsx";
+import { ClientLayoutWrapper } from "../components/layout/ClientLayoutWrapper.jsx";
 ---
 
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
   <body class="bg-[#0a0a12] text-gray-200 antialiased">
 
-    <ParallaxStarfield client:load />
+    <ParallaxStarfield client:only="react" />
 
-    <Navbar client:load />
-
-    <div class="pt-20">
-      <slot />
-    </div>
+    <ClientLayoutWrapper client:load>
+      <div class="pt-20">
+        <slot />
+      </div>
+    </ClientLayoutWrapper>
 
   </body>
 </html>

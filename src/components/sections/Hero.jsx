@@ -12,7 +12,7 @@ export function Hero() {
       </h1>
 
       <p className="text-gray-300 text-lg max-w-md mx-auto mb-10">
-        Tropical and True-Sky Zodiac, together in one place — powered by real NASA JPL data.
+        Tropical and True-Sky Zodiac, together in one place - powered by real NASA JPL data.
       </p>
 
       {/* CTA Buttons */}

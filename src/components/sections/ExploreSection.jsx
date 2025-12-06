@@ -12,7 +12,7 @@ export function ExploreSection() {
 
       <p className="text-gray-300 max-w-lg mx-auto mb-10 leading-relaxed">
         The cosmos is always moving, always shifting, always inviting you to look closer.  
-        Z13 gives you the tools to explore astrology from every angle — symbolic, astronomical, 
+        Z13 gives you the tools to explore astrology from every angle - symbolic, astronomical, 
         or intuitive. Follow your curiosity.
       </p>
 
