@@ -16,7 +16,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'  # adjust if you're using a different version
+          node-version: '22' # adjust if needed
 
       - name: Install dependencies
         run: npm install
@@ -26,17 +26,18 @@ jobs:
           PUBLIC_API_URL: https://api.z13astrology.com
         run: npm run build
 
-      - name: Deploy via rsync over SSH
-        uses: burnett01/rsync-deployments@v8
+      # Copy dist/ contents to the VPS via SCP
+      - name: Upload dist to server
+        uses: appleboy/scp-action@v0.1.7
         with:
-          switches: -avz --delete
-          path: dist/
-          remote_path: ${{ secrets.DEPLOY_PATH }}
-          remote_host: ${{ secrets.SSH_HOST }}
-          remote_user: ${{ secrets.SSH_USER }}
-          remote_port: ${{ secrets.SSH_PORT }}
-          remote_key: ${{ secrets.SSH_KEY }}
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "dist/*"
+          target: ${{ secrets.DEPLOY_PATH }}
 
+      # Reload Caddy after upload
       - name: Reload Caddy
         uses: appleboy/ssh-action@v1.2.0
         with:
