@@ -1,9 +1,11 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
 import { LunarEventsPage } from "../components/pages/LunarEventsPage.jsx";
+import { Footer } from "../layouts/Footer.jsx";
 ---
 
 <MainLayout>
   <LunarEventsPage client:load />
+  <Footer client:load />
 </MainLayout>
 

@@ -5,17 +5,18 @@ import { NavbarZodiacToggle } from "../components/ui/NavbarZodiacToggle";
 export function Navbar() {
   const [open, setOpen] = useState(false);
 
-  const gradient =
-    "bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400 text-transparent bg-clip-text";
-
   return (
     <nav className="fixed top-0 left-0 w-full z-50 backdrop-blur-md bg-white/5 border-b border-gray-800">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
 
         {/* Logo and Toggle */}
         <div className="flex items-center gap-4">
-          <a href="/" className="text-2xl font-bold">
-            <span className={gradient}>Z13</span>
+          <a href="/" className="flex items-center">
+            <img 
+              src="/z13_logo.png" 
+              alt="Z13 Astrology" 
+              className="h-8 w-auto"
+            />
           </a>
           <NavbarZodiacToggle />
         </div>
@@ -25,7 +26,8 @@ export function Navbar() {
           <a href="/positions" className="hover:text-neon-cyan transition">Today's Sky</a>
           <a href="/lunar" className="hover:text-neon-purple transition">Lunar Events</a>
           <a href="/natal/create" className="hover:text-neon-magenta transition">Birth Chart</a>
-          <a href="/the-z13-story" className="hover:text-neon-yellow transition">Z13 Story</a>
+          <a href="/about-z13" className="hover:text-neon-cyan transition">About Z13</a>
+          <a href="/the-z13-story" className="hover:text-neon-yellow transition">The Z13 Story</a>
         </div>
 
         {/* Mobile Hamburger */}
@@ -44,7 +46,8 @@ export function Navbar() {
             <a href="/positions" className="hover:text-neon-cyan transition">Today's Sky</a>
             <a href="/lunar" className="hover:text-neon-purple transition">Lunar Events</a>
             <a href="/natal/create" className="hover:text-neon-magenta transition">Birth Chart</a>
-            <a href="/the-z13-story" className="hover:text-neon-yellow transition">Z13 Story</a>
+            <a href="/about-z13" className="hover:text-neon-cyan transition">About Z13</a>
+            <a href="/the-z13-story" className="hover:text-neon-yellow transition">The Z13 Story</a>
           </div>
         </div>
       )}

@@ -83,3 +83,6 @@ coverage/
 
 # API documentation page (internal use only)
 src/pages/api.astro
+
+# Deployment instructions
+DEPLOY_INSTRUCTIONS.md

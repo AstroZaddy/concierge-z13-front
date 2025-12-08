@@ -1,0 +1,23 @@
+{
+  "name": "Z13 Astrology",
+  "short_name": "Z13",
+  "description": "Classical (Tropical) and True-Sky (Sidereal) Zodiac, together in one place - powered by real NASA JPL data.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
+  "icons": [
+    {
+      "src": "/z13-logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/z13-logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

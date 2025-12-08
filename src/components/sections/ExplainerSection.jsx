@@ -22,7 +22,8 @@ export function ExplainerSection() {
           </div>
 
           <p className="text-gray-300 leading-relaxed">
-            The Tropical zodiac is based on Earth's seasons and psychological
+            The Tropical zodiac is the one you are probably most familiar with, 
+            based on Earth's seasons and psychological
             archetypes. It’s symbolic, reflective, and deeply rooted in Western
             astrology traditions. Most horoscopes you see online use this system.
           </p>
@@ -38,8 +39,8 @@ export function ExplainerSection() {
           <p className="text-gray-300 leading-relaxed">
             The Z13 True-Sky zodiac follows the{" "}
             <strong>actual constellations</strong> in space - with their real
-            sizes, boundaries, and positions. It’s astronomy-accurate and
-            calculated directly from NASA JPL data.
+            sizes, boundaries, and positions. It’s the astrology of what you see in the sky, 
+            and has a 'soul deep' connection to the stars. 🌟 
           </p>
         </div>
       </div>
@@ -48,8 +49,8 @@ export function ExplainerSection() {
       <p className="text-gray-400 mt-10 text-sm">
         Both systems have value.{" "}
         <span className={gradientClass}>
-          You get to explore them together.
-        </span>
+          You get to explore them together by clicking the toggle at the top of the page.
+        </span> ☝️
       </p>
     </section>
   );

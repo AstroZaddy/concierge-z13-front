@@ -1,9 +1,11 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
 import { PositionsPage } from "../components/pages/PositionsPage.jsx";
+import { Footer } from "../layouts/Footer.jsx";
 ---
 
 <MainLayout>
   <PositionsPage client:load />
+  <Footer client:load />
 </MainLayout>
 

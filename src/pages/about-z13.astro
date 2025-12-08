@@ -1,21 +1,78 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
+import { Footer } from "../layouts/Footer.jsx";
+import { DifferenceSection } from "../components/sections/DifferenceSection.jsx";
+import "../styles/global.css";
+import { ConstellationDivider } from "../components/ui/ConstellationDivider.jsx";
+const gradient = "bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400 text-transparent bg-clip-text";
 ---
 
 <MainLayout>
-  <section class="min-h-screen flex flex-col items-center justify-center px-4 py-20 text-center">
-    <h1 class="text-4xl md:text-5xl font-bold mb-6">
-      <span class="gradient-text">About Z13</span>
-    </h1>
-    <p class="text-gray-300 text-lg md:text-xl mb-8 max-w-2xl">
-      This page is under construction.
-    </p>
-    <a 
-      href="/" 
-      class="px-6 py-3 rounded-full font-semibold text-white bg-neon-gradient shadow-neon hover:shadow-neon-magenta hover:scale-[1.02] transition-all duration-300"
-    >
-      Return Home
-    </a>
-  </section>
+  <body class="bg-[#0a0a12] text-gray-200 antialiased">
+    <main class="max-w-3xl mx-auto px-6 py-20 space-y-16">
+
+      <!-- Header -->
+      <header class="text-center space-y-4">
+        <h1 class="text-4xl md:text-5xl font-bold">
+          <span class={gradient}>About Z13</span>
+        </h1>
+        <h2 class="text-2xl md:text-3xl font-bold">Did we really need another zodiac? 🤔</h2>
+        <p class="text-gray-400 text-lg">
+          Spoiler alert: Yes. And no. 😉
+        </p>
+      </header>
+
+      <!-- Section 1 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          People have been watching the stars ever since ... well, ever since there have been people.
+          And over time, people learned to see the connections between the patterns in the sky and the patterns in their lives.
+        </p>
+        <p>
+          Over time, the accumulated wisdom of the star knowledge (<em>astro logos</em> in Greek) 
+          was distilled into a system of signs and symbols. And the knowledge was standardized and codified
+          into the tropical zodiac that we know and love today.
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 2 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          Two problems, though - one was a small shift that happened over time, and the other was a big omission.
+        </p>
+        <p>
+          <strong>The small shift</strong> was the precession of the equinoxes, which is a slow wobble in Earth's rotation. 
+          As a result, the constellations are about 23.5 degrees off from where they were 2,000 years ago. <em>Oops!</em>
+        </p>
+        <p>
+          <strong>The big omission</strong> was the omission of an entire sign, Ophiuchus.
+          The serpent bearer. The 13th sign in the zodiac, omitted because it made the math harder.
+          <em>Uh oh!</em>
+        </p>
+      </section>
+
+      <ConstellationDivider client:load />
+
+      <!-- Section 3 -->
+      <section class="space-y-6 leading-relaxed text-lg md:text-xl">
+        <p>
+          Neither of these changes makes Tropical astrology "wrong."
+          It simply means the sky tells more than one version of the story, and Z13 Astrology has both the Tropical and True-Sky Sidereal zodiacs.
+        </p>
+        <p>
+          Z13 exists to let you explore both
+          the symbolic zodiac you know,
+          and the star-aligned zodiac above your head.
+        </p>
+      </section>
+
+    </main>
+
+    <ConstellationDivider client:load />
+    <DifferenceSection client:load />
+    <Footer client:load />
+  </body>
 </MainLayout>
 

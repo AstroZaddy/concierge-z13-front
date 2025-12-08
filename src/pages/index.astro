@@ -4,17 +4,13 @@ import { Hero } from "../components/sections/Hero.jsx";
 import { DualSystemSection } from "../components/sections/DualSystemSection.jsx";
 import { CtaRow } from "../components/sections/CtaRow.jsx";
 import { ExplainerSection } from "../components/sections/ExplainerSection.jsx";
-import { DifferenceSection } from "../components/sections/DifferenceSection.jsx";
 import { ExploreSection } from "../components/sections/ExploreSection.jsx";
 import { Footer } from "../layouts/Footer.jsx";
 ---
 
 <MainLayout>
   <Hero client:load />
-  <DualSystemSection client:load />
-  <CtaRow client:load />
   <ExplainerSection client:load />
-  <DifferenceSection client:load />
-  <ExploreSection client:load />
+  <CtaRow client:load />
   <Footer client:load />
 </MainLayout>
