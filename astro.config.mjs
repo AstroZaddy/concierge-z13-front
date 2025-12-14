@@ -12,7 +12,10 @@ export const API_BASE =
 // https://astro.build/config
 export default defineConfig({
   vite: {
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+    server: {
+      allowedHosts: true,
+    },
   },
 
   integrations: [react()]
