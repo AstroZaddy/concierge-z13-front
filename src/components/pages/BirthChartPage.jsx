@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 
-const API_BASE_URL = import.meta.env.PUBLIC_API_URL || "http://localhost:8000";
+// Use relative /api path for client-side calls (works through Caddy proxy)
+const API_BASE_URL = "/api";
 const STORAGE_KEY = "z13-zodiac-mode";
 
 export function BirthChartPage() {
