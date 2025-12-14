@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 
-// Use relative /api path for client-side calls (works through Caddy proxy)
-const API_BASE_URL = "/api";
 const STORAGE_KEY = "z13-zodiac-mode";
 
 export function PositionsPage() {
@@ -76,8 +74,7 @@ export function PositionsPage() {
       mounted, 
       isHydrated, 
       mode, 
-      hasFetched: hasFetchedRef.current,
-      apiUrl: API_BASE_URL 
+      hasFetched: hasFetchedRef.current
     });
     
     // Don't fetch until we're mounted (in browser)
@@ -92,7 +89,7 @@ export function PositionsPage() {
       return;
     }
 
-    const url = `${API_BASE_URL}/positions/now?mode=both`;
+    const url = `/api/positions/now?mode=both`;
     console.log("Making API request to:", url);
     setLoading(true);
     setError(null);
