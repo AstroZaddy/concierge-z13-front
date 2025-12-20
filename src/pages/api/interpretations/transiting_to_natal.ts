@@ -1,28 +1,32 @@
 import type { APIRoute } from 'astro';
 
 // Backend API URL (server-side only, not exposed to browser)
-const BACKEND_API_URL = 'http://127.0.0.1:9002';
+const BACKEND_API_URL = import.meta.env.BACKEND_API_URL || 'http://127.0.0.1:9002';
 
-export const GET: APIRoute = async ({ url }) => {
+export const POST: APIRoute = async ({ request }) => {
   try {
-    // Get mode parameter from query string, default to 'both'
-    const mode = url.searchParams.get('mode') || 'both';
+    // Get request body
+    const body = await request.json();
     
     // Construct backend URL
-    const backendUrl = `${BACKEND_API_URL}/positions/now?mode=${mode}`;
+    const backendUrl = `${BACKEND_API_URL}/interpretations/transiting_to_natal`;
     
     // Fetch from FastAPI backend (server-side)
     const response = await fetch(backendUrl, {
-      method: 'GET',
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
       return new Response(
         JSON.stringify({ 
-          error: `Backend API error: ${response.status} ${response.statusText}` 
+          error: `Backend API error: ${response.status} ${response.statusText}`,
+          detail: errorData.detail || errorData
         }),
         {
           status: response.status,
@@ -43,10 +47,10 @@ export const GET: APIRoute = async ({ url }) => {
       },
     });
   } catch (error) {
-    console.error('Error in positions/now API endpoint:', error);
+    console.error('Error in interpretations/transiting_to_natal API endpoint:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Failed to fetch positions',
+        error: 'Failed to fetch interpretations',
         message: error instanceof Error ? error.message : 'Unknown error'
       }),
       {

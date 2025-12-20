@@ -1,0 +1,11 @@
+---
+import MainLayout from "../../layouts/MainLayout.astro";
+import { TransitsPage } from "../../components/pages/TransitsPage.jsx";
+import { Footer } from "../../layouts/Footer.jsx";
+---
+
+<MainLayout>
+  <TransitsPage client:load />
+  <Footer client:load />
+</MainLayout>
+

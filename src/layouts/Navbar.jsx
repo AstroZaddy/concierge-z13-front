@@ -28,6 +28,9 @@ export function Navbar() {
           <a href="/natal/create" className="hover:text-neon-magenta transition">Birth Chart</a>
           <a href="/about-z13" className="hover:text-neon-cyan transition">About Z13</a>
           <a href="/the-z13-story" className="hover:text-neon-yellow transition">The Z13 Story</a>
+          <span className="font-black text-lg tracking-wider text-neon-yellow drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]">
+            DEVELOPMENT VERSION
+          </span>
         </div>
 
         {/* Mobile Hamburger */}
@@ -48,6 +51,9 @@ export function Navbar() {
             <a href="/natal/create" className="hover:text-neon-magenta transition">Birth Chart</a>
             <a href="/about-z13" className="hover:text-neon-cyan transition">About Z13</a>
             <a href="/the-z13-story" className="hover:text-neon-yellow transition">The Z13 Story</a>
+            <span className="font-black text-base tracking-wider text-neon-yellow drop-shadow-[0_0_8px_rgba(250,204,21,0.8)] pt-2">
+              DEVELOPMENT VERSION
+            </span>
           </div>
         </div>
       )}

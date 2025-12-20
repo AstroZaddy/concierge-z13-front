@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { NeonButton } from "../ui/NeonButton";
 
 // Use relative /api path for client-side calls (works through Caddy proxy)
 const API_BASE_URL = "/api";
@@ -113,13 +114,44 @@ export function BirthChartPage() {
     return { sun, moon, ascendant };
   }, [currentNatal]);
 
-  // Fetch interpretations for Big Three
+  // Get remaining placements (excluding Big Three and other chart angles)
+  const remainingPlacements = useMemo(() => {
+    if (!currentNatal) return [];
+    const bigThreeBodies = new Set(["Sun", "Moon"]);
+    const excludedAngles = new Set(["ASC", "DSC", "MC", "IC"]);
+    const positions = currentNatal.positions?.filter((p) => !bigThreeBodies.has(p.body)) || [];
+    const angles = currentNatal.angles?.filter((a) => !excludedAngles.has(a.angle)) || [];
+    return [...positions, ...angles];
+  }, [currentNatal]);
+
+  // Build natal longitudes for transits API
+  const natalLongitudes = useMemo(() => {
+    if (!currentNatal?.positions) return null;
+    
+    const validBodies = [
+      "Sun", "Moon", "Mercury", "Venus", "Mars",
+      "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto",
+      "Chiron", "Lilith"
+    ];
+    
+    const longitudes = {};
+    currentNatal.positions.forEach(position => {
+      if (validBodies.includes(position.body) && position.longitude !== undefined) {
+        longitudes[position.body] = position.longitude;
+      }
+    });
+    
+    return Object.keys(longitudes).length > 0 ? longitudes : null;
+  }, [currentNatal]);
+
+  // Fetch interpretations for Big Three and remaining placements
   useEffect(() => {
     if (!currentNatal || loadingInterpretations) return;
 
     const { sun, moon, ascendant } = bigThree;
     const toFetch = [];
 
+    // Fetch Big Three interpretations
     if (sun?.placement?.sign) {
       const signSlug = sun.placement.sign.toLowerCase().replace(/\s+/g, "_");
       const slug = `sun_in_${signSlug}`;
@@ -146,6 +178,56 @@ export function BirthChartPage() {
         toFetch.push({ category: "angle_in_sign", slug, key });
       }
     }
+
+    // Fetch interpretations for remaining placements
+    remainingPlacements.forEach((placement) => {
+      const label = placement.body || placement.angle;
+      const placementData = placement.placement;
+      if (!placementData) return;
+      
+      // Extract sign from placement (inline version of getSign)
+      const sign = placementData?.sign || placementData?.label?.split(" ")[0] || "";
+      if (!sign) return;
+
+      const signSlug = sign.toLowerCase().replace(/\s+/g, "_");
+      const bodySlug = label.toLowerCase().replace(/\s+/g, "_");
+      
+      // Check if it's a node (North Node or South Node)
+      const isNode = placement.body && (
+        label.toLowerCase().includes("north node") || 
+        label.toLowerCase().includes("south node") ||
+        label === "NN" || 
+        label === "SN" ||
+        label === "North Node" ||
+        label === "South Node"
+      );
+      
+      let category, slug;
+      
+      if (isNode) {
+        // Nodes use node_in_sign category
+        category = "node_in_sign";
+        // Determine if it's North Node (nn) or South Node (sn)
+        const isNorthNode = label.toLowerCase().includes("north") || label === "NN" || label === "North Node";
+        const nodePrefix = isNorthNode ? "nn" : "sn";
+        slug = `${nodePrefix}_in_${signSlug}`;
+      } else {
+        // Determine if it's a planet or angle
+        const isPlanet = !!placement.body;
+        category = isPlanet ? "planet_in_sign" : "angle_in_sign";
+        
+        // Build slug - for angles, use "asc_in_" pattern, for planets use "{planet}_in_{sign}"
+        slug = isPlanet 
+          ? `${bodySlug}_in_${signSlug}`
+          : `asc_in_${signSlug}`; // Note: API might need different pattern for other angles
+      }
+      
+      const key = `${category}_${slug}`;
+      
+      if (!interpretations[key]) {
+        toFetch.push({ category, slug, key });
+      }
+    });
 
     if (toFetch.length === 0) return;
 
@@ -177,7 +259,7 @@ export function BirthChartPage() {
       setInterpretations(newInterpretations);
       setLoadingInterpretations(false);
     });
-  }, [currentNatal, bigThree]);
+  }, [currentNatal, bigThree, remainingPlacements, interpretations]);
 
   // Handle form submission
   const handleSubmit = async (e) => {
@@ -458,11 +540,32 @@ export function BirthChartPage() {
   const getInterpretation = (type, bodyOrAngle, sign) => {
     if (!sign) return null;
     const slug = sign.toLowerCase().replace(/\s+/g, "_");
-    const category = type === "planet" ? "planet_in_sign" : "angle_in_sign";
     const bodySlug = bodyOrAngle.toLowerCase().replace(/\s+/g, "_");
-    const interpretationSlug = type === "planet" 
-      ? `${bodySlug}_in_${slug}` 
-      : `asc_in_${slug}`;
+    
+    // Check if it's a node (either by type parameter or by name detection)
+    const isNode = type === "node" || (bodyOrAngle && (
+      bodyOrAngle.toLowerCase().includes("north node") || 
+      bodyOrAngle.toLowerCase().includes("south node") ||
+      bodyOrAngle === "NN" || 
+      bodyOrAngle === "SN" ||
+      bodyOrAngle === "North Node" ||
+      bodyOrAngle === "South Node"
+    ));
+    
+    let category, interpretationSlug;
+    
+    if (isNode) {
+      category = "node_in_sign";
+      const isNorthNode = bodyOrAngle.toLowerCase().includes("north") || bodyOrAngle === "NN" || bodyOrAngle === "North Node";
+      const nodePrefix = isNorthNode ? "nn" : "sn";
+      interpretationSlug = `${nodePrefix}_in_${slug}`;
+    } else {
+      category = type === "planet" ? "planet_in_sign" : "angle_in_sign";
+      interpretationSlug = type === "planet" 
+        ? `${bodySlug}_in_${slug}` 
+        : `asc_in_${slug}`;
+    }
+    
     const key = `${category}_${interpretationSlug}`;
     return interpretations[key] || null;
   };
@@ -609,15 +712,100 @@ export function BirthChartPage() {
     );
   };
 
-  // Get remaining placements (excluding Big Three and other chart angles)
-  const remainingPlacements = useMemo(() => {
-    if (!currentNatal) return [];
-    const bigThreeBodies = new Set(["Sun", "Moon"]);
-    const excludedAngles = new Set(["ASC", "DSC", "MC", "IC"]);
-    const positions = currentNatal.positions?.filter((p) => !bigThreeBodies.has(p.body)) || [];
-    const angles = currentNatal.angles?.filter((a) => !excludedAngles.has(a.angle)) || [];
-    return [...positions, ...angles];
-  }, [currentNatal]);
+  // Render placement card for remaining placements
+  const renderPlacementCard = (placement, idx) => {
+    const label = placement.body || placement.angle;
+    const sign = getSign(placement.placement);
+    const degree = getDegree(placement.placement);
+    
+    // Check if it's a node
+    const isNode = placement.body && (
+      label.toLowerCase().includes("north node") || 
+      label.toLowerCase().includes("south node") ||
+      label === "NN" || 
+      label === "SN" ||
+      label === "North Node" ||
+      label === "South Node"
+    );
+    
+    // Determine if it's a planet, angle, or node
+    const isPlanet = !!placement.body && !isNode;
+    const type = isNode ? "node" : (isPlanet ? "planet" : "angle");
+    
+    const interpretation = getInterpretation(type, label, sign);
+    const cardKey = `placement_${label.toLowerCase()}_${idx}`;
+    const isExpanded = expandedCards.has(cardKey);
+    const hasInterpretation = !!interpretation;
+
+    return (
+      <div
+        key={`${label}-${idx}`}
+        className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
+          hasInterpretation ? "cursor-pointer hover:shadow-neon" : ""
+        }`}
+        onClick={() => hasInterpretation && toggleCard(cardKey)}
+        role={hasInterpretation ? "button" : undefined}
+        tabIndex={hasInterpretation ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (hasInterpretation && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            toggleCard(cardKey);
+          }
+        }}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <h3 className="text-xl font-bold text-gray-100">{label}</h3>
+        </div>
+
+        <div className="space-y-2">
+          <div>
+            <span className="text-sm text-gray-400">Sign: </span>
+            <span className="text-neon-purple font-semibold">{sign}</span>
+          </div>
+          {degree && (
+            <div>
+              <span className="text-sm text-gray-400">Degree: </span>
+              <span className="text-neon-cyan font-semibold">{degree}°</span>
+            </div>
+          )}
+        </div>
+
+        {isExpanded && interpretation && (
+          <div className="mt-4 pt-4 border-t border-gray-700/40 animate-in slide-in-from-top duration-300 space-y-4">
+            {/* Macro Interpretation - always show first if available */}
+            {interpretation.macro && (
+              <div className="space-y-3">
+                {/* Macro interpretation text */}
+                {interpretation.macro.interpretation && (
+                  <div>
+                    <p className="text-gray-300 leading-relaxed text-base">
+                      {interpretation.macro.interpretation}
+                    </p>
+                  </div>
+                )}
+                {/* Macro keywords as themes */}
+                {interpretation.macro.keywords && Array.isArray(interpretation.macro.keywords) && interpretation.macro.keywords.length > 0 && (
+                  <div>
+                    <p className="text-sm text-gray-400 mb-2">Themes:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {interpretation.macro.keywords.map((keyword, keywordIdx) => (
+                        <span
+                          key={keywordIdx}
+                          className="text-xs px-2 py-1 rounded bg-cyan-900/30 text-cyan-300 border border-cyan-500/40"
+                        >
+                          {keyword}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (!mounted) {
     return null; // SSR safety
@@ -796,6 +984,18 @@ export function BirthChartPage() {
           </div>
         )}
 
+        {/* Personalized cosmic vibes button */}
+        {currentNatal && (bigThree.sun || bigThree.moon || bigThree.ascendant) && natalLongitudes && (
+          <div className="mb-12 flex justify-center">
+            <NeonButton 
+              href={`/natal/transits?natal_longitudes=${encodeURIComponent(JSON.stringify(natalLongitudes))}`}
+              className="text-lg px-8 py-4"
+            >
+              Personalized cosmic vibes
+            </NeonButton>
+          </div>
+        )}
+
         {/* Remaining Placements */}
         {currentNatal && remainingPlacements.length > 0 && (
           <div>
@@ -803,32 +1003,7 @@ export function BirthChartPage() {
               <span className="gradient-text">Other Placements</span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {remainingPlacements.map((placement, idx) => {
-                const label = placement.body || placement.angle;
-                const sign = getSign(placement.placement);
-                const degree = getDegree(placement.placement);
-
-                return (
-                  <div
-                    key={`${label}-${idx}`}
-                    className="p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm"
-                  >
-                    <h3 className="text-xl font-bold text-gray-100 mb-3">{label}</h3>
-                    <div className="space-y-2">
-                      <div>
-                        <span className="text-sm text-gray-400">Sign: </span>
-                        <span className="text-neon-purple font-semibold">{sign}</span>
-                      </div>
-                      {degree && (
-                        <div>
-                          <span className="text-sm text-gray-400">Degree: </span>
-                          <span className="text-neon-cyan font-semibold">{degree}°</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+              {remainingPlacements.map((placement, idx) => renderPlacementCard(placement, idx))}
             </div>
           </div>
         )}
