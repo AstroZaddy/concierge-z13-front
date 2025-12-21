@@ -14,7 +14,7 @@ export function NeonCard({ title, icon, children }) {
         backdrop-blur-sm
         transition-all 
         duration-500
-        hover:shadow-neon
+        shadow-neon
       "
     >
       {/* Header */}

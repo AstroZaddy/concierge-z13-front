@@ -630,7 +630,7 @@ export function BirthChartPage() {
     return (
       <div
         className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
-          hasInterpretation ? "cursor-pointer hover:shadow-neon" : ""
+          hasInterpretation ? "cursor-pointer shadow-neon" : ""
         }`}
         onClick={() => hasInterpretation && toggleCard(cardKey)}
         role={hasInterpretation ? "button" : undefined}
@@ -741,7 +741,7 @@ export function BirthChartPage() {
       <div
         key={`${label}-${idx}`}
         className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
-          hasInterpretation ? "cursor-pointer hover:shadow-neon" : ""
+          hasInterpretation ? "cursor-pointer shadow-neon" : ""
         }`}
         onClick={() => hasInterpretation && toggleCard(cardKey)}
         role={hasInterpretation ? "button" : undefined}
@@ -964,7 +964,7 @@ export function BirthChartPage() {
 
         {/* Big Three Section */}
         {currentNatal && (bigThree.sun || bigThree.moon || bigThree.ascendant) && (
-          <div className="mb-12 p-8 rounded-xl bg-white/5 border border-purple-500/30 backdrop-blur-sm shadow-glow relative">
+          <div className="mb-12 p-8 rounded-xl bg-white/5 border border-purple-500/30 backdrop-blur-sm relative">
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-purple-500/5 to-cyan-500/5 pointer-events-none"></div>
             <div className="relative">
               <h2 className="text-2xl md:text-3xl font-bold mb-6 text-center">
