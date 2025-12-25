@@ -3,10 +3,10 @@ import { GradientText } from "../ui/NeonGradient";
 
 export function Hero() {
   return (
-    <section className="text-center pt-16 pb-20 px-6 max-w-3xl mx-auto">
-      <h1 className="text-4xl md:text-6xl font-extrabold mb-4 leading-tight">
+    <section className="text-center pt-32 pb-10 px-6 max-w-3xl mx-auto">
+      <h1 className="text-3xl md:text-5xl font-extrabold italic mb-4 leading-tight drop-shadow-[0_0_12px_rgba(192,192,192,0.8)]">
         Z13 Astrology </h1>
-        <h2 className="text-2xl md:text-4xl font-extrabold mb-4 leading-tight">
+        <h2 className="text-2xl md:text-4xl font-extrabold mb-4 leading-tight text-gray-400">
         Showing you the <span className="bg-gradient-to-r from-purple-400 via-fuchsia-400 to-blue-400 text-transparent bg-clip-text">
   cosmic breadcrumbs
 </span> that are lighting up your life path.
@@ -28,7 +28,7 @@ export function Hero() {
         </NeonButton>
 
         <NeonButton href="/natal/create" className="w-full md:w-auto">
-          Find Your Real Sign
+          Create your free natal chart
         </NeonButton>
       </div>
     </section>

@@ -1,0 +1,19 @@
+[Unit]
+Description=Z13 Astrology Frontend Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/srv/z13/concierge-z13-front
+Environment="PORT=8002"
+Environment="NODE_ENV=production"
+Environment="PUBLIC_API_URL=https://www.z13astrology.com/api"
+ExecStart=/usr/bin/node dist/server/entry.mjs
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

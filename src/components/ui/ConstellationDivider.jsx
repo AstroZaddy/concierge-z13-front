@@ -1,6 +1,6 @@
 export function ConstellationDivider() {
     return (
-      <div className="w-full flex justify-center my-12">
+      <div className="w-full flex justify-center my-6">
         <div className="relative flex items-center gap-3">
   
           {/* Left Line */}

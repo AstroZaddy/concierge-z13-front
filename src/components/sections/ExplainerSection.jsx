@@ -5,7 +5,7 @@ const gradientClass =
 
 export function ExplainerSection() {
   return (
-    <section className="py-20 px-4 max-w-5xl mx-auto text-center">
+    <section className="py-10 px-4 max-w-5xl mx-auto text-center">
       <h2 className="text-3xl md:text-4xl font-bold mb-12">
         Why{" "}
         <span className={gradientClass}>

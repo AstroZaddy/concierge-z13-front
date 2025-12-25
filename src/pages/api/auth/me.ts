@@ -1,28 +1,34 @@
 import type { APIRoute } from 'astro';
 
-// Backend API URL (server-side only, not exposed to browser)
-const BACKEND_API_URL = 'http://127.0.0.1:9002';
+// Ensure this route is not prerendered (server-side only)
 
-export const GET: APIRoute = async ({ url }) => {
+// Backend API URL (server-side only, not exposed to browser)
+const BACKEND_API_URL = import.meta.env.BACKEND_API_URL || 'http://127.0.0.1:9002';
+
+export const GET: APIRoute = async ({ request }) => {
   try {
-    // Get mode parameter from query string, default to 'both'
-    const mode = url.searchParams.get('mode') || 'both';
+    // Get cookies from the incoming request
+    const cookieHeader = request.headers.get('cookie');
     
     // Construct backend URL
-    const backendUrl = `${BACKEND_API_URL}/positions/now?mode=${mode}`;
+    const backendUrl = `${BACKEND_API_URL}/auth/me`;
     
     // Fetch from FastAPI backend (server-side)
     const response = await fetch(backendUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
+        ...(cookieHeader && { 'Cookie': cookieHeader }),
       },
     });
+
+    const responseData = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       return new Response(
         JSON.stringify({ 
-          error: `Backend API error: ${response.status} ${response.statusText}` 
+          error: `Backend API error: ${response.status} ${response.statusText}`,
+          detail: responseData.detail || responseData
         }),
         {
           status: response.status,
@@ -33,20 +39,18 @@ export const GET: APIRoute = async ({ url }) => {
       );
     }
 
-    const data = await response.json();
-
     // Return the data as JSON
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify(responseData), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
       },
     });
   } catch (error) {
-    console.error('Error in positions/now API endpoint:', error);
+    console.error('Error in auth/me API endpoint:', error);
     return new Response(
       JSON.stringify({ 
-        error: 'Failed to fetch positions',
+        error: 'Failed to get user info',
         message: error instanceof Error ? error.message : 'Unknown error'
       }),
       {

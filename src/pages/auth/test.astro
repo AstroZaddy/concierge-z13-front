@@ -1,0 +1,11 @@
+---
+import MainLayout from "../../layouts/MainLayout.astro";
+import { LoginTestPage } from "../../components/pages/LoginTestPage.jsx";
+import { Footer } from "../../layouts/Footer.jsx";
+---
+
+<MainLayout>
+  <LoginTestPage client:load />
+  <Footer client:load />
+</MainLayout>
+

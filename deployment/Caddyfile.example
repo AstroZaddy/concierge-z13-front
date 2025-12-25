@@ -1,0 +1,20 @@
+# Example Caddyfile configuration for Z13 Frontend
+# Add this to your existing Caddyfile or replace the z13astro.com block
+
+z13astro.com {
+    # API requests → FastAPI backend (strip /api prefix)
+    @api path /api/* /openapi.json /docs /redoc
+    handle @api {
+        uri strip_prefix /api
+        reverse_proxy 127.0.0.1:9002
+    }
+    
+    # All other requests → Astro SSR Node server
+    reverse_proxy 127.0.0.1:8002
+    
+    # Optional: Add logging
+    log {
+        output file /var/log/caddy/z13astro.log
+    }
+}
+

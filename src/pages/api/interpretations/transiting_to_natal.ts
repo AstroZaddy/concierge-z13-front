@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
 
+// Ensure this route is not prerendered (server-side only)
+
 // Backend API URL (server-side only, not exposed to browser)
 const BACKEND_API_URL = import.meta.env.BACKEND_API_URL || 'http://127.0.0.1:9002';
 

@@ -1,17 +1,33 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { getCachedQueryData, getCachedQueryState, subscribeToQueryData } from "../../utils/queryClient";
+import { bootstrapQueryKeys } from "../../contexts/SessionBootstrapContext";
 
 const STORAGE_KEY = "z13-zodiac-mode";
 
 export function PositionsPage() {
+  // This component is rendered as a separate React island (client:load), so it doesn't have
+  // access to SessionBootstrapProvider context. However, we can access the global QueryClient
+  // to read preloaded positions data from the cache.
+  
+  // Try to get preloaded positions from cache first
+  const positionsQueryKey = bootstrapQueryKeys.positions.now("both");
+  const cachedPositions = getCachedQueryData(positionsQueryKey);
+  const cachedState = getCachedQueryState(positionsQueryKey);
+  
+  const [positions, setPositions] = useState(cachedPositions || null);
+  const [positionsLoading, setPositionsLoading] = useState(cachedState?.isLoading || false);
+  const [positionsError, setPositionsError] = useState(cachedState?.error || null);
+  const hasFetchedRef = useRef(false);
+  
+  // Interpretations state - key format: `${mode}_${body}_${sign}` (e.g., "z13_sun_aries")
+  const [interpretations, setInterpretations] = useState({});
+  const [interpretationsLoading, setInterpretationsLoading] = useState(false);
+  const [expandedCards, setExpandedCards] = useState(new Set());
+  
   // Since we're in a separate React island, we need to read mode directly from localStorage
   // and listen for storage events to sync with the toggle
   const [mode, setModeState] = useState("z13");
   const [isHydrated, setIsHydrated] = useState(false);
-  const [positionsZ13, setPositionsZ13] = useState([]);
-  const [positionsTropical, setPositionsTropical] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const hasFetchedRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const prevModeRef = useRef(mode);
 
@@ -69,70 +85,185 @@ export function PositionsPage() {
     setMounted(true);
   }, []);
 
+  // Subscribe to positions cache updates from SessionBootstrapContext
   useEffect(() => {
-    console.log("PositionsPage useEffect triggered", { 
-      mounted, 
-      isHydrated, 
-      mode, 
-      hasFetched: hasFetchedRef.current
+    if (!mounted) return;
+    
+    // Subscribe to cache updates
+    const unsubscribe = subscribeToQueryData(positionsQueryKey, (data) => {
+      if (data) {
+        setPositions(data);
+        setPositionsLoading(false);
+        setPositionsError(null);
+      }
     });
     
-    // Don't fetch until we're mounted (in browser)
-    if (!mounted) {
-      console.log("Not mounted yet, waiting...");
-      return;
+    // If we have cached data, use it immediately
+    if (cachedPositions) {
+      setPositions(cachedPositions);
+      setPositionsLoading(cachedState?.isLoading || false);
+      setPositionsError(cachedState?.error || null);
+    } else if (!hasFetchedRef.current) {
+      // Only fetch if not in cache and we haven't fetched yet
+      hasFetchedRef.current = true;
+      setPositionsLoading(true);
+      setPositionsError(null);
+
+      fetch("/api/positions?mode=both", {
+        credentials: "include",
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          setPositions(data);
+          setPositionsLoading(false);
+        })
+        .catch((err) => {
+          console.error("PositionsPage: Error fetching positions:", err);
+          setPositionsError(err);
+          setPositionsLoading(false);
+          hasFetchedRef.current = false; // Allow retry
+        });
+    }
+    
+    return unsubscribe;
+  }, [mounted, positionsQueryKey, cachedPositions, cachedState]);
+
+  // Transform API Position format to display format
+  const transformPositions = useMemo(() => {
+    if (!positions) return { z13: [], tropical: [] };
+
+    // The API returns PositionsResponse with mode=both: { as_of_utc, mode: "both", positions: Position[] }
+    // Each Position has placement: PlacementBoth { z13: PlacementCore, tropical: PlacementCore }
+    const posArray = positions.positions;
+    if (!Array.isArray(posArray)) {
+      console.warn("PositionsPage: positions.positions is not an array", positions);
+      return { z13: [], tropical: [] };
     }
 
-    // Don't fetch if we've already fetched
-    if (hasFetchedRef.current) {
-      console.log("Already fetched, skipping...");
-      return;
-    }
+    // Transform a single position array to both modes
+    const transformPositionArray = (targetMode) => {
+      return posArray
+        .filter(pos => {
+          // Only include bodies/points, exclude angles and nodes
+          if (pos.kind !== "body" && pos.kind !== "point") return false;
+          const key = pos.key?.toLowerCase() || "";
+          // Exclude North Node and South Node (handle both "North Node" and "NorthNode" formats)
+          if (key === "north node" || key === "south node" || key === "northnode" || key === "southnode") return false;
+          return true;
+        })
+        .map((pos) => {
+          // Extract placement info - handle PlacementCore or PlacementBoth
+          let placementInfo = null;
+          if (pos.placement) {
+            if (pos.placement.z13 && pos.placement.tropical) {
+              // PlacementBoth - select based on targetMode
+              const selected = targetMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+              placementInfo = {
+                sign: selected.sign,
+                sign_degree: selected.deg_in_sign,
+              };
+            } else if (pos.placement.sign !== undefined) {
+              // PlacementCore (single mode)
+              placementInfo = {
+                sign: pos.placement.sign,
+                sign_degree: pos.placement.deg_in_sign,
+              };
+            }
+          }
 
-    const url = `/api/positions/now?mode=both`;
-    console.log("Making API request to:", url);
-    setLoading(true);
-    setError(null);
-    hasFetchedRef.current = true;
+          return {
+            body: pos.key,
+            signName: placementInfo?.sign || null,
+            sign: placementInfo ? `${placementInfo.sign} (${placementInfo.sign_degree.toFixed(2)}°)` : null,
+            longitude: pos.lon_deg,
+            retrograde: pos.retrograde ?? null,
+            speed: pos.speed_lon_deg_per_day ?? null,
+            mode: targetMode,
+          };
+        });
+    };
 
-    fetch(url)
-      .then((res) => {
-        console.log("API response status:", res.status, res.statusText);
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("API response data:", data);
-        setPositionsZ13(data.positions_z13 || []);
-        setPositionsTropical(data.positions_tropical || []);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching positions:", err);
-        setError(err.message || "Failed to load positions");
-        setLoading(false);
-        hasFetchedRef.current = false; // Allow retry
+    // Extract both modes from the same array
+    return {
+      z13: transformPositionArray("z13"),
+      tropical: transformPositionArray("tropical"),
+    };
+  }, [positions]);
+
+  // Track which interpretations have been requested to avoid duplicate fetches
+  const interpretationsRequestedRef = useRef(new Set());
+
+  // Fetch interpretations for all positions in both modes
+  useEffect(() => {
+    if (!positions || !transformPositions.z13.length || interpretationsLoading) return;
+
+    const toFetch = [];
+    
+    // Build list of interpretations to fetch for both modes
+    ["z13", "tropical"].forEach((targetMode) => {
+      const positionsForMode = targetMode === "z13" ? transformPositions.z13 : transformPositions.tropical;
+      positionsForMode.forEach((pos) => {
+        if (!pos.signName || !pos.body) return;
+        
+        const key = `${targetMode}_${pos.body}_${pos.signName}`;
+        // Only check requested set to avoid re-fetches
+        if (interpretationsRequestedRef.current.has(key)) return;
+        
+        interpretationsRequestedRef.current.add(key);
+        const bodySlug = pos.body.toLowerCase().replace(/\s+/g, "_");
+        const signSlug = pos.signName.toLowerCase().replace(/\s+/g, "_");
+        const slug = `${bodySlug}_in_${signSlug}`;
+        
+        toFetch.push({ category: "planet_in_sign", slug, key });
       });
-  }, [mounted, mode]);
+    });
 
-  // Select positions based on current mode - useMemo to ensure updates when mode changes
+    if (toFetch.length === 0) return;
+
+    setInterpretationsLoading(true);
+    Promise.all(
+      toFetch.map(({ category, slug, key }) =>
+        fetch(`/api/interpretations/${category}/${slug}`, {
+          credentials: "include",
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .catch((err) => {
+            console.error(`Error fetching interpretation for ${key}:`, err);
+            return null;
+          })
+          .then((data) => ({ key, data }))
+      )
+    ).then((results) => {
+      setInterpretations((prev) => {
+        const newInterpretations = { ...prev };
+        results.forEach(({ key, data }) => {
+          if (data) {
+            newInterpretations[key] = data;
+          }
+        });
+        return newInterpretations;
+      });
+      setInterpretationsLoading(false);
+    });
+  }, [positions, transformPositions, interpretationsLoading]);
+
+  // Select positions based on current mode
   const currentPositions = useMemo(() => {
-    const selected = mode === "z13" ? positionsZ13 : positionsTropical;
-    console.log("currentPositions updated", { mode, count: selected.length });
+    const selected = mode === "z13" ? transformPositions.z13 : transformPositions.tropical;
     return selected;
-  }, [mode, positionsZ13, positionsTropical]);
+  }, [mode, transformPositions]);
+  
+  // Use loading and error states
+  // Only show loading if we're actually loading and don't have data yet
+  const loading = mounted && positionsLoading && !positions;
+  const error = positionsError ? (positionsError.message || String(positionsError)) : null;
 
   const modeLabel = mode === "z13" ? "Z13 (true-sky)" : "Tropical";
-
-  // Debug: Log when mode changes
-  useEffect(() => {
-    console.log("Mode changed to:", mode, "Positions available:", {
-      z13: positionsZ13.length,
-      tropical: positionsTropical.length
-    });
-  }, [mode, positionsZ13.length, positionsTropical.length]);
 
   // Calculate degree within sign from longitude
   // For tropical: 12 signs × 30° each
@@ -161,9 +292,27 @@ export function PositionsPage() {
     return label?.split(" (")[0] || label;
   };
 
+  // Toggle card expansion
+  const toggleCard = (cardKey) => {
+    const newExpanded = new Set(expandedCards);
+    if (newExpanded.has(cardKey)) {
+      newExpanded.delete(cardKey);
+    } else {
+      newExpanded.add(cardKey);
+    }
+    setExpandedCards(newExpanded);
+  };
+
+  // Get interpretation for a position
+  const getInterpretation = (body, signName, mode) => {
+    if (!body || !signName) return null;
+    const key = `${mode}_${body}_${signName}`;
+    return interpretations[key] || null;
+  };
+
   if (!mounted || loading) {
     return (
-      <section className="min-h-screen px-4 py-20">
+      <section className="min-h-screen px-4 pt-28 pb-20">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
             <span className="gradient-text">Current Celestials Vibes</span>
@@ -178,7 +327,7 @@ export function PositionsPage() {
 
   if (error) {
     return (
-      <section className="min-h-screen px-4 py-20">
+      <section className="min-h-screen px-4 pt-28 pb-20">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
             <span className="gradient-text">Current Celestials Vibes</span>
@@ -213,15 +362,21 @@ export function PositionsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {currentPositions
-              .filter((position) => position.body !== "North Node" && position.body !== "South Node")
               .map((position) => {
               const sign = extractSign(position.sign);
               const degree = extractDegree(position.sign, position.longitude, position.mode);
+              const cardKey = `${position.body}-${mode}`;
+              const isExpanded = expandedCards.has(cardKey);
+              const interpretation = getInterpretation(position.body, position.signName, mode);
+              const hasInterpretation = !!interpretation;
 
               return (
                 <div
-                  key={`${position.body}-${mode}`}
-                  className="p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm hover:shadow-neon transition-all duration-300"
+                  key={cardKey}
+                  onClick={() => toggleCard(cardKey)}
+                  className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm hover:shadow-neon transition-all duration-300 cursor-pointer ${
+                    hasInterpretation ? "shadow-[0_0_15px_rgba(139,92,246,0.3)]" : ""
+                  }`}
                 >
                   <div className="flex items-start justify-between mb-3">
                     <h3 className="text-xl font-bold text-gray-100">
@@ -255,6 +410,31 @@ export function PositionsPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Expanded interpretation view */}
+                  {isExpanded && interpretation && (
+                    <div className="mt-4 pt-4 border-t border-gray-700/40">
+                      {interpretation.micro?.meaning && (
+                        <div className="mb-4">
+                          <p className="text-gray-200 text-sm leading-relaxed">
+                            {interpretation.micro.meaning}
+                          </p>
+                        </div>
+                      )}
+                      {interpretation.micro?.keywords && interpretation.micro.keywords.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {interpretation.micro.keywords.map((keyword, idx) => (
+                            <span
+                              key={idx}
+                              className="px-3 py-1 text-xs rounded-full bg-purple-900/30 text-purple-300 border border-purple-500/40"
+                            >
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

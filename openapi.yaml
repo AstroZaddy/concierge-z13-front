@@ -1,0 +1,2276 @@
+openapi: 3.0.3
+info:
+  title: Z13 Astrology API
+  version: 0.1.2
+  description: |
+    Backend API for Z13 Astrology system providing true-sky (Z13) and tropical placements,
+    lunar timelines, chart computation, transits, and interpretation scaffolding.
+    
+    **Base URL:** `http://127.0.0.1:9002` (local development)
+    
+    **Authentication:**
+    - Public endpoints require no authentication
+    - Protected endpoints use cookie-based session authentication
+    - Admin endpoints require `X-Admin-Token` header in production
+    
+    **Rate Limiting:**
+    All endpoints are rate-limited. See endpoint descriptions for specific limits.
+    Rate limit exceeded returns HTTP 429 with `Retry-After` header.
+
+servers:
+  - url: http://127.0.0.1:9002
+    description: Local development server
+
+tags:
+  - name: meta
+    description: Health check and metadata endpoints
+  - name: positions
+    description: Planetary positions and placements
+  - name: lunar
+    description: Lunar phases and ingresses
+  - name: location
+    description: Location search
+  - name: auth
+    description: Authentication and session management
+  - name: Users
+    description: User profile management
+  - name: charts
+    description: Chart CRUD operations
+  - name: transits
+    description: Transit calculations and aspects
+  - name: interpretations
+    description: Astrological interpretations
+  - name: admin
+    description: Administrative functions
+
+security:
+  - sessionAuth: []
+
+paths:
+  /meta/ping:
+    get:
+      tags:
+        - meta
+      summary: Simple uptime check
+      description: Basic health check endpoint for uptime monitoring and version verification.
+      security: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingResponse'
+              example:
+                status: ok
+                version: "0.1.2"
+                timestamp: "2025-12-22T18:00:00Z"
+
+  /meta/health/live:
+    get:
+      tags:
+        - meta
+      summary: Liveness probe
+      description: Kubernetes/Docker liveness probe endpoint. Returns 200 if the server is running.
+      security: []
+      responses:
+        '200':
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+
+  /meta/health/ready:
+    get:
+      tags:
+        - meta
+      summary: Readiness probe
+      description: Kubernetes/Docker readiness probe endpoint. Verifies all critical dependencies are available.
+      security: []
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+  /positions:
+    get:
+      tags:
+        - positions
+      summary: Get positions for bodies/points/angles at a datetime
+      description: |
+        Returns astronomy-first ecliptic positions at a given moment (default now),
+        optionally annotated with zodiac placements for z13/tropical/both.
+        If angles (ASC/MC/DSC/IC) are requested, lat/lon are required.
+      security: []
+      parameters:
+        - name: datetime
+          in: query
+          description: ISO-8601 timestamp. UTC assumed if timezone is missing. If omitted, defaults to current UTC time.
+          schema:
+            type: string
+            format: date-time
+        - name: mode
+          in: query
+          description: Zodiac placement overlay mode
+          schema:
+            type: string
+            enum: [z13, tropical, both]
+            default: both
+        - name: keys
+          in: query
+          description: Repeatable list of objects to return (bodies/points/angles). Example: keys=Sun&keys=Moon&keys=ASC
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: lat
+          in: query
+          description: Required if requesting angles (ASC/MC/DSC/IC). Latitude in degrees (-90 to 90).
+          schema:
+            type: number
+            format: float
+            minimum: -90
+            maximum: 90
+        - name: lon
+          in: query
+          description: Required if requesting angles (ASC/MC/DSC/IC). Longitude in degrees (-180 to 180).
+          schema:
+            type: number
+            format: float
+            minimum: -180
+            maximum: 180
+        - name: timezone
+          in: query
+          description: Optional IANA timezone name (informational; datetime is normalized to UTC).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionsResponse'
+        '400':
+          description: Invalid mode, angles requested without lat/lon, invalid datetime format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /lunar_events:
+    get:
+      tags:
+        - lunar
+      summary: Upcoming lunar phases and ingresses
+      description: Get upcoming lunar phases and ingresses, enriched with micro-interpretations.
+      security: []
+      parameters:
+        - name: datetime
+          in: query
+          description: Start of window (UTC ISO-8601). Defaults to current UTC.
+          schema:
+            type: string
+            format: date-time
+        - name: days
+          in: query
+          description: Range length (1-90 days)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 14
+        - name: mode
+          in: query
+          description: Zodiac system mode
+          schema:
+            type: string
+            enum: [z13, tropical, both]
+            default: z13
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/LunarEventsResponse'
+                  - $ref: '#/components/schemas/LunarEventsBothResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /location/search:
+    get:
+      tags:
+        - location
+      summary: Search for cities used in natal chart calculations
+      description: Search for cities used in natal chart calculations. Returns cached results when available.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Partial or full city name (case-insensitive)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of results (1-25)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 25
+            default: 10
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocationSearchResponse'
+        '404':
+          description: No matching location found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '409':
+          description: Ambiguous city (multiple candidates)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Missing q parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /auth/register:
+    post:
+      tags:
+        - auth
+      summary: Register a new user
+      description: Register a new user account and automatically log them in.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          headers:
+            Set-Cookie:
+              description: Session cookie (HttpOnly, SameSite=Lax)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: Login with email and password
+      description: Login with email and password. Creates a new session and sets an HttpOnly cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: Session cookie (HttpOnly, SameSite=Lax)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '403':
+          description: Account is inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Logout (revoke current session)
+      description: Logout by revoking the current session. Clears the session cookie.
+      responses:
+        '200':
+          description: Logout successful
+          headers:
+            Set-Cookie:
+              description: Cleared session cookie
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /auth/me:
+    get:
+      tags:
+        - auth
+      summary: Get current user information
+      description: Get current authenticated user information.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: Not authenticated or session invalid/expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /users/me:
+    patch:
+      tags:
+        - Users
+      summary: Update current user profile
+      description: Updates mutable profile fields for the currently authenticated user. Does not modify chart data or default chart selection.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+            example:
+              display_name: "Rob"
+      responses:
+        '200':
+          description: User profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '429':
+          description: Rate limit exceeded (10 requests per minute per user)
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema:
+                type: integer
+                example: 60
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitError'
+
+  /charts:
+    get:
+      tags:
+        - charts
+      summary: List user charts
+      description: Returns chart metadata for the authenticated user (default excludes archived).
+      parameters:
+        - name: include_archived
+          in: query
+          description: Include archived charts in the list
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartListResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+    post:
+      tags:
+        - charts
+      summary: Create (save) a chart
+      description: Creates a chart for the authenticated user, computes and stores a snapshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartCreateRequest'
+      responses:
+        '201':
+          description: Chart created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '409':
+          description: Chart limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /charts/{chart_id}:
+    get:
+      tags:
+        - charts
+      summary: Get one chart (full payload)
+      description: Returns chart metadata, input, and computed snapshot for the given chart_id.
+      parameters:
+        - name: chart_id
+          in: path
+          required: true
+          description: Chart ID
+          schema:
+            type: string
+            format: uuid
+        - name: include_archived
+          in: query
+          description: Allow retrieval of archived chart
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: Chart not found (or not owned by user)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '410':
+          description: Chart archived (if include_archived=false)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+    patch:
+      tags:
+        - charts
+      summary: Update a chart
+      description: Updates chart metadata and/or input. If input changes, snapshot is recomputed and replaced. If set_as_default=true, this chart becomes the user's default.
+      parameters:
+        - name: chart_id
+          in: path
+          required: true
+          description: Chart ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChartUpdateRequest'
+      responses:
+        '200':
+          description: Chart updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: Chart not found (or not owned by user)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+    delete:
+      tags:
+        - charts
+      summary: Archive (soft delete) a chart
+      description: Sets archived_at for the chart. If chart is default, server clears or reassigns default.
+      parameters:
+        - name: chart_id
+          in: path
+          required: true
+          description: Chart ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Chart archived successfully
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: Chart not found (or not owned by user)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /charts/default:
+    get:
+      tags:
+        - charts
+      summary: Get default chart (full payload)
+      description: Returns the user's default chart. If none exists, returns 404.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChartResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: No default chart set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /charts/snapshots/{snapshot_key}/placements:
+    get:
+      tags:
+        - charts
+      summary: Get placements from a chart snapshot
+      description: |
+        Get placements computed from a stored chart snapshot. This endpoint reads absolute ecliptic longitudes
+        from a chart snapshot and computes sign/degree placements for the requested zodiac system(s).
+        It does NOT call the heavy natal computation pipeline.
+      parameters:
+        - name: snapshot_key
+          in: path
+          required: true
+          description: Snapshot key (usually "natal")
+          schema:
+            type: string
+        - name: natal_id
+          in: query
+          description: Natal data ID (uses user's default if not provided)
+          schema:
+            type: string
+            format: uuid
+        - name: zodiac
+          in: query
+          description: Zodiac system
+          schema:
+            type: string
+            enum: [z13, tropical, both]
+            default: z13
+        - name: include_angles
+          in: query
+          description: Include angles (ASC, MC, etc.) in response
+          schema:
+            type: boolean
+            default: true
+        - name: include_houses
+          in: query
+          description: Include houses in response (requires valid angles and birth time)
+          schema:
+            type: boolean
+            default: false
+        - name: house_system
+          in: query
+          description: House system (currently only whole-sign is supported)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotPlacementsResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: Natal data not found, snapshot not found, or no default natal data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: House computation not possible/implemented
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /transits/today:
+    get:
+      tags:
+        - transits
+      summary: Top transits to a natal chart
+      description: Compute top transits to a natal chart. Returns the most significant transiting aspects currently active.
+      security: []
+      parameters:
+        - name: natal_datetime
+          in: query
+          required: true
+          description: ISO-8601 birth datetime. Date-only accepted; defaults to noon local.
+          schema:
+            type: string
+            format: date-time
+        - name: natal_location_latitude
+          in: query
+          description: Birth latitude (required if no city provided)
+          schema:
+            type: number
+            format: float
+        - name: natal_location_longitude
+          in: query
+          description: Birth longitude (required if no city provided)
+          schema:
+            type: number
+            format: float
+        - name: natal_location_timezone
+          in: query
+          description: Birth timezone (e.g., America/New_York)
+          schema:
+            type: string
+        - name: natal_city
+          in: query
+          description: Birth city name (alternative to lat/lon/timezone)
+          schema:
+            type: string
+        - name: mode
+          in: query
+          description: Zodiac system
+          schema:
+            type: string
+            enum: [z13, tropical]
+            default: z13
+        - name: when
+          in: query
+          description: ISO-8601 datetime for transiting positions (defaults to now UTC)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Maximum number of transits to return (1-20)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+        - name: include_nodes
+          in: query
+          description: Include North/South Node aspects
+          schema:
+            type: boolean
+            default: true
+        - name: include_lilith
+          in: query
+          description: Include Lilith aspects
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitsResponse'
+        '400':
+          description: Invalid mode, missing location/city, invalid when datetime format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: City not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '409':
+          description: Ambiguous city
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '500':
+          description: Failed to compute transits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '504':
+          description: Operation timed out (30 seconds)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /transits/aspects/now:
+    post:
+      tags:
+        - transits
+      summary: Compute transiting-to-natal aspects at current UTC time
+      description: |
+        Compute aspects between current transiting planets and provided natal longitudes.
+        This endpoint computes transiting planetary positions server-side for current UTC time.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitsToNatalAspectsNowRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitsToNatalAspectsNowResponse'
+        '400':
+          description: No valid natal bodies provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '500':
+          description: Server error during computation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /transits/vibes/now:
+    post:
+      tags:
+        - transits
+      summary: Compute vibes of the day and cosmic season from transiting-to-natal aspects
+      description: |
+        Synthesize "Vibes of the Day" and "General Cosmic Season" summaries from transiting-to-natal aspects.
+        Uses deterministic scoring and template-based language generation (no AI/LLM usage).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitsVibesNowRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitsVibesNowResponse'
+        '400':
+          description: No valid natal bodies provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '500':
+          description: Server error during computation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /interpretations:
+    get:
+      tags:
+        - interpretations
+      summary: List all available interpretation categories
+      description: List all available interpretation categories.
+      security: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryListResponse'
+
+  /interpretations/{category}:
+    get:
+      tags:
+        - interpretations
+      summary: List all items in a category
+      description: List all available items (interpretations) in a specific category.
+      security: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          description: Category name (case-insensitive)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemListResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /interpretations/{category}/{item}:
+    get:
+      tags:
+        - interpretations
+      summary: Get interpretation by category and item
+      description: Get a specific interpretation JSON by category and item.
+      security: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          description: Category name (case-insensitive)
+          schema:
+            type: string
+        - name: item
+          in: path
+          required: true
+          description: Item name (case-insensitive)
+          schema:
+            type: string
+        - name: format
+          in: query
+          description: Optional format filter - 'micro' returns only micro section, 'macro' returns only macro section
+          schema:
+            type: string
+            enum: [micro, macro]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          description: Invalid format parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '404':
+          description: Category or item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /interpretations/transiting_to_natal:
+    post:
+      tags:
+        - interpretations
+      summary: Batch lookup of transit-to-natal interpretations
+      description: |
+        Batch lookup of transit-to-natal interpretations from transit interpretation files.
+        Returns normalized micro/macro interpretation payloads for a list of transit-to-natal aspect keys.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitingToNatalInterpretationsRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransitingToNatalInterpretationsResponse'
+        '400':
+          description: Invalid layer value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+  /admin/validate/transits_to_natal:
+    get:
+      tags:
+        - admin
+      summary: Validate transit-to-natal interpretation files
+      description: Validate transit-to-natal interpretation JSON files for completeness and correctness.
+      security:
+        - adminToken: []
+      parameters:
+        - name: interp_dir
+          in: query
+          description: Path to interpretation files directory (default: data/interpretations/transits)
+          schema:
+            type: string
+        - name: aspects
+          in: query
+          description: Comma-separated list of required aspects
+          schema:
+            type: string
+        - name: strict
+          in: query
+          description: If true, treats warnings as errors
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '403':
+          description: Not authorized (invalid or missing admin token in production)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '500':
+          description: Server error during validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: z13_session
+      description: Session-based authentication using HttpOnly cookie
+    adminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
+      description: Admin token for administrative endpoints (required in production)
+
+  schemas:
+    PingResponse:
+      type: object
+      required:
+        - status
+        - version
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: "0.1.2"
+        timestamp:
+          type: string
+          format: date-time
+
+    LivenessResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: alive
+        timestamp:
+          type: string
+          format: date-time
+
+    DependencyStatusResponse:
+      type: object
+      required:
+        - name
+        - status
+        - message
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true
+
+    ReadinessResponse:
+      type: object
+      required:
+        - status
+        - dependencies
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        dependencies:
+          type: array
+          items:
+            $ref: '#/components/schemas/DependencyStatusResponse'
+        timestamp:
+          type: string
+          format: date-time
+
+    PlacementCore:
+      type: object
+      required:
+        - system
+        - sign
+        - sign_index
+        - deg_in_sign
+      properties:
+        system:
+          type: string
+          enum: [z13, tropical]
+        sign:
+          type: string
+        sign_index:
+          type: integer
+          description: Zero-based sign index within the system (Pisces=0 for both systems)
+        deg_in_sign:
+          type: number
+          format: float
+
+    PlacementBoth:
+      type: object
+      required:
+        - z13
+        - tropical
+      properties:
+        z13:
+          $ref: '#/components/schemas/PlacementCore'
+        tropical:
+          $ref: '#/components/schemas/PlacementCore'
+
+    Position:
+      type: object
+      required:
+        - key
+        - kind
+        - lon_deg
+      properties:
+        key:
+          type: string
+          description: Body/point/angle identifier (e.g., "Sun", "Moon", "NorthNode", "ASC")
+        kind:
+          type: string
+          enum: [body, point, angle]
+        lon_deg:
+          type: number
+          format: float
+          description: Absolute ecliptic longitude in degrees [0, 360)
+        lat_deg:
+          type: number
+          format: float
+          nullable: true
+        speed_lon_deg_per_day:
+          type: number
+          format: float
+          nullable: true
+        retrograde:
+          type: boolean
+          nullable: true
+        distance_km:
+          type: number
+          format: float
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        placement:
+          oneOf:
+            - $ref: '#/components/schemas/PlacementCore'
+            - $ref: '#/components/schemas/PlacementBoth'
+          nullable: true
+
+    PositionsResponse:
+      type: object
+      required:
+        - as_of_utc
+        - mode
+        - positions
+      properties:
+        as_of_utc:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [z13, tropical, both]
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+
+    LunarEvent:
+      type: object
+      required:
+        - datetime
+        - event_type
+        - sign
+        - description
+        - keywords
+      properties:
+        datetime:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum: [phase, ingress]
+        sign:
+          type: string
+        phase:
+          type: string
+          nullable: true
+        description:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        keywords:
+          type: array
+          items:
+            type: string
+
+    LunarEventsResponse:
+      type: object
+      required:
+        - start
+        - end
+        - mode
+        - events
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [z13, tropical]
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/LunarEvent'
+
+    LunarEventsBothResponse:
+      type: object
+      required:
+        - start
+        - end
+        - mode
+        - events_z13
+        - events_tropical
+      properties:
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [both]
+        events_z13:
+          type: array
+          items:
+            $ref: '#/components/schemas/LunarEvent'
+        events_tropical:
+          type: array
+          items:
+            $ref: '#/components/schemas/LunarEvent'
+
+    CityRecord:
+      type: object
+      properties:
+        city:
+          type: string
+        region:
+          type: string
+          nullable: true
+        country:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+
+    LocationSearchResponse:
+      type: object
+      required:
+        - query
+        - count
+        - results
+        - source
+      properties:
+        query:
+          type: string
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CityRecord'
+        source:
+          type: string
+          enum: [cache, geopy, none]
+        message:
+          type: string
+          nullable: true
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 10
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 50
+        plan_type:
+          type: string
+          enum: [free, premium]
+          default: free
+
+    RegisterResponse:
+      type: object
+      required:
+        - id
+        - email
+        - plan_type
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          nullable: true
+        plan_type:
+          type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    LoginResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+
+    LogoutResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+
+    MeResponse:
+      type: object
+      required:
+        - id
+        - email
+        - plan_type
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          nullable: true
+        plan_type:
+          type: string
+        default_natal_data_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: Display name used for greetings and UI personalization. If null, display name will be cleared.
+
+    UserResponse:
+      type: object
+      required:
+        - id
+        - email
+        - plan_type
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          nullable: true
+        plan_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ChartInput:
+      type: object
+      required:
+        - datetime_utc
+        - lat
+        - lon
+        - birth_time_provided
+        - birth_place_provided
+      properties:
+        datetime_utc:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          nullable: true
+        place_name:
+          type: string
+          nullable: true
+        lat:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+        lon:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+        birth_time_provided:
+          type: boolean
+        birth_place_provided:
+          type: boolean
+
+    ChartMeta:
+      type: object
+      required:
+        - id
+        - type
+        - name
+        - is_default
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [natal, synastry, composite, solar_return, lunar_return]
+        name:
+          type: string
+        is_default:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Chart:
+      type: object
+      required:
+        - meta
+        - input
+        - computed
+      properties:
+        meta:
+          $ref: '#/components/schemas/ChartMeta'
+        input:
+          $ref: '#/components/schemas/ChartInput'
+        computed:
+          $ref: '#/components/schemas/ComputedPositions'
+
+    ChartCreateRequest:
+      type: object
+      required:
+        - type
+        - name
+        - input
+      properties:
+        type:
+          type: string
+          enum: [natal, synastry, composite, solar_return, lunar_return]
+        name:
+          type: string
+          minLength: 1
+        input:
+          $ref: '#/components/schemas/ChartInput'
+        set_as_default:
+          type: boolean
+          default: false
+
+    ChartUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        set_as_default:
+          type: boolean
+        input:
+          $ref: '#/components/schemas/ChartInput'
+
+    ChartListResponse:
+      type: object
+      required:
+        - charts
+      properties:
+        charts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChartMeta'
+
+    ChartResponse:
+      type: object
+      required:
+        - chart
+      properties:
+        chart:
+          $ref: '#/components/schemas/Chart'
+
+    ComputedPositions:
+      type: object
+      required:
+        - as_of_utc
+        - mode
+        - positions
+      properties:
+        as_of_utc:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [z13, tropical, both]
+        positions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+
+    SnapshotPlacementsResponse:
+      type: object
+      description: Response structure for snapshot placements endpoint
+      properties:
+        snapshot_key:
+          type: string
+        natal_id:
+          type: string
+          format: uuid
+        computed_at:
+          type: string
+          format: date-time
+          nullable: true
+        zodiac_requested:
+          type: string
+        placements:
+          type: object
+          additionalProperties:
+            type: object
+
+    TransitInterpretation:
+      type: object
+      properties:
+        title:
+          type: string
+        short:
+          type: string
+        full:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+        tone:
+          type: string
+        category:
+          type: string
+        duration:
+          type: object
+          properties:
+            approx_days:
+              type: integer
+            approx_label:
+              type: string
+
+    Transit:
+      type: object
+      required:
+        - transiting_planet
+        - natal_planet
+        - aspect
+        - orb
+      properties:
+        transiting_planet:
+          type: string
+        natal_planet:
+          type: string
+        aspect:
+          type: string
+        orb:
+          type: number
+          format: float
+        interpretation:
+          $ref: '#/components/schemas/TransitInterpretation'
+          nullable: true
+
+    TransitsResponse:
+      type: object
+      required:
+        - datetime
+        - mode
+        - count
+        - transits
+      properties:
+        datetime:
+          type: string
+          format: date-time
+        mode:
+          type: string
+          enum: [z13, tropical]
+        count:
+          type: integer
+        transits:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transit'
+
+    TransitsToNatalAspectsNowRequest:
+      type: object
+      required:
+        - natal_longitudes
+      properties:
+        natal_longitudes:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+          description: Dict mapping natal body names to ecliptic longitudes (degrees)
+        orb_deg:
+          type: number
+          format: float
+          default: 2.0
+          minimum: 0
+        max_hits:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 720
+        include_delta:
+          type: boolean
+          default: true
+
+    AspectHit:
+      type: object
+      required:
+        - transiting_body
+        - natal_body
+        - aspect
+        - separation_deg
+        - delta_from_exact_deg
+      properties:
+        transiting_body:
+          type: string
+        natal_body:
+          type: string
+        aspect:
+          type: string
+          enum: [conjunction, sextile, square, trine, opposition]
+        separation_deg:
+          type: number
+          format: float
+        delta_from_exact_deg:
+          type: number
+          format: float
+
+    BodiesUsed:
+      type: object
+      required:
+        - transiting
+        - natal
+      properties:
+        transiting:
+          type: integer
+        natal:
+          type: integer
+
+    AspectsStats:
+      type: object
+      required:
+        - pairs_checked
+        - hits_total
+        - hits_returned
+      properties:
+        pairs_checked:
+          type: integer
+        hits_total:
+          type: integer
+        hits_returned:
+          type: integer
+
+    TransitsToNatalAspectsNowResponse:
+      type: object
+      required:
+        - ok
+        - timestamp_utc
+        - orb_deg
+        - max_hits
+        - bodies_used
+        - aspects_found
+        - stats
+      properties:
+        ok:
+          type: boolean
+        timestamp_utc:
+          type: string
+          format: date-time
+        orb_deg:
+          type: number
+          format: float
+        max_hits:
+          type: integer
+        bodies_used:
+          $ref: '#/components/schemas/BodiesUsed'
+        aspects_found:
+          type: array
+          items:
+            $ref: '#/components/schemas/AspectHit'
+        stats:
+          $ref: '#/components/schemas/AspectsStats'
+
+    TransitsVibesNowRequest:
+      type: object
+      required:
+        - natal_longitudes
+      properties:
+        natal_longitudes:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+        orb_deg:
+          type: number
+          format: float
+          default: 2.0
+          minimum: 0
+        max_hits:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 720
+        include_debug:
+          type: boolean
+          default: false
+
+    VibesLens:
+      type: object
+      required:
+        - lens
+        - tone
+        - confidence
+        - headline
+        - summary
+        - themes
+        - keywords
+        - anchors
+        - anchors_source
+        - energy_profile
+      properties:
+        lens:
+          type: string
+          enum: [inner, outer]
+        tone:
+          type: string
+          enum: [supportive, challenging, dynamic, intense]
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        headline:
+          type: string
+        summary:
+          type: string
+        themes:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              weight:
+                type: number
+                format: float
+        keywords:
+          type: array
+          items:
+            type: string
+        anchors:
+          type: array
+          items:
+            type: object
+            properties:
+              transiting_body:
+                type: string
+              aspect:
+                type: string
+              natal_body:
+                type: string
+              delta_from_exact_deg:
+                type: number
+                format: float
+        anchors_source:
+          type: string
+          enum: [lens, fallback]
+        energy_profile:
+          type: object
+          properties:
+            supportive:
+              type: number
+              format: float
+            challenging:
+              type: number
+              format: float
+            neutral:
+              type: number
+              format: float
+
+    VibesMeta:
+      type: object
+      required:
+        - hits_total
+        - hits_used_for_scoring_day
+        - hits_used_for_scoring_season
+        - theme_assignments_used_day
+        - theme_assignments_used_season
+        - algorithm_version
+      properties:
+        hits_total:
+          type: integer
+        hits_used_for_scoring_day:
+          type: integer
+        hits_used_for_scoring_season:
+          type: integer
+        theme_assignments_used_day:
+          type: integer
+        theme_assignments_used_season:
+          type: integer
+        algorithm_version:
+          type: string
+        debug:
+          type: object
+          nullable: true
+
+    TransitsVibesNowResponse:
+      type: object
+      required:
+        - ok
+        - timestamp_utc
+        - orb_deg
+        - max_hits
+        - vibes_of_the_day
+        - cosmic_season
+        - meta
+        - aspects_found
+      properties:
+        ok:
+          type: boolean
+        timestamp_utc:
+          type: string
+          format: date-time
+        orb_deg:
+          type: number
+          format: float
+        max_hits:
+          type: integer
+        vibes_of_the_day:
+          $ref: '#/components/schemas/VibesLens'
+        cosmic_season:
+          $ref: '#/components/schemas/VibesLens'
+        meta:
+          $ref: '#/components/schemas/VibesMeta'
+        aspects_found:
+          type: array
+          items:
+            $ref: '#/components/schemas/AspectHit'
+
+    CategoryListResponse:
+      type: object
+      required:
+        - categories
+        - count
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+
+    ItemListResponse:
+      type: object
+      required:
+        - category
+        - items
+        - count
+      properties:
+        category:
+          type: string
+        items:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+
+    TransitToNatalKey:
+      type: object
+      required:
+        - transiting_body
+        - aspect
+        - natal_body
+      properties:
+        transiting_body:
+          type: string
+        aspect:
+          type: string
+          enum: [conjunction, sextile, square, trine, opposition]
+        natal_body:
+          type: string
+
+    TransitingToNatalInterpretationsRequest:
+      type: object
+      required:
+        - items
+      properties:
+        layer:
+          type: string
+          enum: [micro, macro, both]
+          default: micro
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransitToNatalKey'
+          minItems: 1
+        max_items:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 720
+
+    NormalizedMicro:
+      type: object
+      properties:
+        meaning:
+          type: string
+        timeframe:
+          type: string
+          nullable: true
+        keywords:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+
+    NormalizedMacro:
+      type: object
+      properties:
+        overview:
+          type: string
+        suggestions:
+          type: array
+          items:
+            type: string
+        precautions:
+          type: array
+          items:
+            type: string
+        timeframe:
+          type: string
+          nullable: true
+        journal_prompt:
+          type: string
+          nullable: true
+
+    TransitingToNatalInterpretationResult:
+      type: object
+      required:
+        - key
+        - found
+        - themes
+      properties:
+        key:
+          $ref: '#/components/schemas/TransitToNatalKey'
+        found:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          enum: [invalid_body_name, invalid_aspect_name, not_found_in_files]
+        micro:
+          $ref: '#/components/schemas/NormalizedMicro'
+          nullable: true
+        macro:
+          $ref: '#/components/schemas/NormalizedMacro'
+          nullable: true
+        themes:
+          type: array
+          items:
+            type: string
+
+    TransitingToNatalStats:
+      type: object
+      required:
+        - requested
+        - returned
+        - found
+        - missing
+      properties:
+        requested:
+          type: integer
+        returned:
+          type: integer
+        found:
+          type: integer
+        missing:
+          type: integer
+
+    TransitingToNatalInterpretationsResponse:
+      type: object
+      required:
+        - ok
+        - layer
+        - results
+        - missing
+        - stats
+      properties:
+        ok:
+          type: boolean
+        layer:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransitingToNatalInterpretationResult'
+        missing:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransitToNatalKey'
+        stats:
+          $ref: '#/components/schemas/TransitingToNatalStats'
+
+    ValidationStats:
+      type: object
+      required:
+        - expected_entries
+        - found_entries
+        - missing_entries
+      properties:
+        expected_entries:
+          type: integer
+        found_entries:
+          type: integer
+        missing_entries:
+          type: integer
+
+    ValidationError:
+      type: object
+      required:
+        - transiting_body
+        - file
+        - missing
+      properties:
+        transiting_body:
+          type: string
+        file:
+          type: string
+        missing:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    ValidationWarning:
+      type: object
+      required:
+        - transiting_body
+        - file
+        - message
+      properties:
+        transiting_body:
+          type: string
+        file:
+          type: string
+        message:
+          type: string
+
+    ValidationResponse:
+      type: object
+      required:
+        - ok
+        - required_transiting_bodies
+        - required_natal_bodies
+        - required_aspects
+        - stats
+        - errors
+        - warnings
+      properties:
+        ok:
+          type: boolean
+        required_transiting_bodies:
+          type: array
+          items:
+            type: string
+        required_natal_bodies:
+          type: array
+          items:
+            type: string
+        required_aspects:
+          type: array
+          items:
+            type: string
+        stats:
+          $ref: '#/components/schemas/ValidationStats'
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationError'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationWarning'
+
+    ErrorDetail:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: object
+        error:
+          type: string
+        message:
+          type: string
+
+    RateLimitError:
+      type: object
+      required:
+        - error
+        - detail
+      properties:
+        error:
+          type: string
+          example: "Rate limit exceeded"
+        detail:
+          type: string
+          example: "10/minute"
+

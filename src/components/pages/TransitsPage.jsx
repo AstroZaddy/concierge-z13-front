@@ -19,7 +19,7 @@ export function TransitsPage() {
   const [modalAspect, setModalAspect] = useState(null); // { transiting_body, aspect, natal_body }
   const [modalVibes, setModalVibes] = useState(null); // "day" or "season"
 
-  // Get natal longitudes from URL params
+  // Get natal longitudes and birth info from URL params
   const natalLongitudes = useMemo(() => {
     if (typeof window === "undefined") return null;
     const searchParams = new URLSearchParams(window.location.search);
@@ -32,6 +32,67 @@ export function TransitsPage() {
       return null;
     }
   }, []);
+
+  // Get birth info from URL params
+  const birthInfoFromUrl = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const searchParams = new URLSearchParams(window.location.search);
+    const name = searchParams.get("name");
+    const birthDatetimeUtc = searchParams.get("birth_datetime_utc");
+    const birthTimeProvided = searchParams.get("birth_time_provided") === "true";
+    const birthPlaceName = searchParams.get("birth_place_name");
+    const birthTimezone = searchParams.get("birth_timezone");
+    
+    if (!name && !birthDatetimeUtc && !birthPlaceName) return null;
+    
+    return {
+      name,
+      birth_datetime_utc: birthDatetimeUtc,
+      birth_time_provided: birthTimeProvided,
+      birth_place_name: birthPlaceName,
+      birth_timezone: birthTimezone,
+    };
+  }, []);
+
+  // Try to fetch birth info from API if authenticated
+  const [birthInfoFromApi, setBirthInfoFromApi] = useState(null);
+  
+  useEffect(() => {
+    if (!mounted || birthInfoFromUrl) return; // Skip if we have URL params
+    
+    const fetchBirthInfo = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/charts`, {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        
+        if (response.ok) {
+          const chartsResponse = await response.json();
+          const chartsList = chartsResponse.charts || [];
+          const defaultChart = chartsList.find((c) => c.is_default) || chartsList[0];
+          if (defaultChart) {
+            // Convert ChartMeta to format expected by birthInfoFromApi
+            setBirthInfoFromApi({
+              id: defaultChart.id,
+              name: defaultChart.name,
+              is_default: defaultChart.is_default,
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching birth info:", err);
+      }
+    };
+    
+    fetchBirthInfo();
+  }, [mounted, birthInfoFromUrl]);
+
+  // Use birth info from URL params or API
+  const birthData = birthInfoFromUrl || birthInfoFromApi;
 
   useEffect(() => {
     setMounted(true);
@@ -298,6 +359,51 @@ export function TransitsPage() {
     return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   };
 
+  // Format birth information for display
+  const formatBirthInfo = () => {
+    if (!birthData) return null;
+    
+    const info = [];
+    
+    // Name
+    if (birthData.name) {
+      info.push({ label: "Name", value: birthData.name });
+    }
+    
+    // Date of birth
+    if (birthData.birth_datetime_utc) {
+      const birthDate = new Date(birthData.birth_datetime_utc);
+      const localDate = birthData.birth_timezone 
+        ? new Date(birthDate.toLocaleString("en-US", { timeZone: birthData.birth_timezone }))
+        : birthDate;
+      const dateStr = localDate.toLocaleDateString("en-US", { 
+        year: "numeric", 
+        month: "long", 
+        day: "numeric" 
+      });
+      info.push({ label: "Date of Birth", value: dateStr });
+      
+      // Time (if known)
+      if (birthData.birth_time_provided) {
+        const timeStr = localDate.toLocaleTimeString("en-US", { 
+          hour: "2-digit", 
+          minute: "2-digit",
+          timeZone: birthData.birth_timezone || undefined
+        });
+        info.push({ label: "Time", value: timeStr });
+      }
+    }
+    
+    // Location (if known)
+    if (birthData.birth_place_name) {
+      info.push({ label: "Location", value: birthData.birth_place_name });
+    }
+    
+    return info;
+  };
+
+  const birthInfo = formatBirthInfo();
+
   if (!mounted) {
     return null; // SSR safety
   }
@@ -305,11 +411,11 @@ export function TransitsPage() {
   // No natal chart data - show message with link back
   if (!natalLongitudes || Object.keys(natalLongitudes).length === 0) {
     return (
-      <section className="min-h-screen px-4 py-20">
+      <section className="min-h-screen px-4 pt-28 pb-20">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              <span className="gradient-text">Current Cosmic Vibes</span>
+              <span className="gradient-text">Daily Cosmic Weather</span>
             </h1>
           </div>
           <div className="p-8 rounded-xl bg-white/5 border border-amber-500/30 backdrop-blur-sm text-center">
@@ -345,6 +451,21 @@ export function TransitsPage() {
           )}
         </div>
 
+        {/* Birth Information */}
+        {birthInfo && birthInfo.length > 0 && (
+          <div className="mb-8 p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
+            <h2 className="text-xl font-bold text-gray-100 mb-4">Birth Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {birthInfo.map((item, idx) => (
+                <div key={idx}>
+                  <div className="text-sm text-gray-400 mb-1">{item.label}</div>
+                  <div className="text-base text-gray-200 font-semibold">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Loading State */}
         {loading && (
           <div className="text-center py-12">
@@ -366,7 +487,7 @@ export function TransitsPage() {
             <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-purple-500/5 to-cyan-500/5 pointer-events-none"></div>
             <div className="relative">
               <h2 className="text-2xl md:text-3xl font-bold mb-2 text-center">
-                <span className="gradient-text">Celestial snapshot</span>
+                <span className="gradient-text">Celestial Weather and Cosmic Climate</span>
               </h2>
               {vibesData.timestamp_utc && (
                 <p className="text-center text-gray-400 text-sm mb-6">
@@ -374,10 +495,10 @@ export function TransitsPage() {
                 </p>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Day Block */}
+                {/* Today's Cosmic Weather */}
                 {vibesData.vibes_of_the_day && (
                   <div className="p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
-                    <h3 className="text-xl font-bold text-gray-100 mb-3">Day Block</h3>
+                    <h3 className="text-xl font-bold text-gray-100 mb-3">Today's Celestial Weather</h3>
                     <h4 className="text-lg font-semibold text-neon-purple mb-2">
                       {vibesData.vibes_of_the_day.headline}
                     </h4>
@@ -438,7 +559,7 @@ export function TransitsPage() {
                 {/* Season Block */}
                 {vibesData.cosmic_season && (
                   <div className="p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
-                    <h3 className="text-xl font-bold text-gray-100 mb-3">Season Block</h3>
+                    <h3 className="text-xl font-bold text-gray-100 mb-3">Cosmic Climate Conditions</h3>
                     <h4 className="text-lg font-semibold text-neon-cyan mb-2">
                       {vibesData.cosmic_season.headline}
                     </h4>
@@ -594,8 +715,8 @@ export function TransitsPage() {
                 return (
                   <div
                     key={bodyName}
-                    className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
-                      hasAspects ? "cursor-pointer shadow-neon" : ""
+                    className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm hover:shadow-neon transition-all duration-300 ${
+                      hasAspects ? "cursor-pointer shadow-[0_0_15px_rgba(139,92,246,0.3)]" : ""
                     }`}
                     onClick={() => hasAspects && toggleCard(bodyName)}
                     role={hasAspects ? "button" : undefined}

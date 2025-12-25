@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { getCachedQueryData, getCachedQueryState, subscribeToQueryData } from "../../utils/queryClient";
+import { bootstrapQueryKeys } from "../../contexts/SessionBootstrapContext";
 
 // Use relative /api path for client-side calls (works through Caddy proxy)
 const API_BASE_URL = "/api";
@@ -9,12 +11,18 @@ export function LunarEventsPage() {
   // and listen for storage events to sync with the toggle
   const [mode, setModeState] = useState("z13");
   const [isHydrated, setIsHydrated] = useState(false);
+  
+  // Try to get preloaded lunar events from cache first
+  const lunarEventsQueryKey = bootstrapQueryKeys.lunar.events(5, "z13");
+  const cachedLunarEvents = getCachedQueryData(lunarEventsQueryKey);
+  const cachedState = getCachedQueryState(lunarEventsQueryKey);
+  
   const [eventsZ13, setEventsZ13] = useState([]);
   const [eventsTropical, setEventsTropical] = useState([]);
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(!cachedLunarEvents);
+  const [error, setError] = useState(cachedState?.error || null);
   const hasFetchedRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const prevModeRef = useRef(mode);
@@ -68,57 +76,81 @@ export function LunarEventsPage() {
     }
   }, [mode]);
 
-  // Fetch lunar events
+  // Subscribe to lunar events cache updates and use cached data if available
   useEffect(() => {
-    console.log("LunarEventsPage useEffect triggered", { 
-      mounted, 
-      isHydrated, 
-      mode, 
-      hasFetched: hasFetchedRef.current,
-      apiUrl: API_BASE_URL 
-    });
+    if (!mounted) return;
     
-    // Don't fetch until we're mounted (in browser)
-    if (!mounted) {
-      console.log("Not mounted yet, waiting...");
-      return;
-    }
-
-    // Don't fetch if we've already fetched
-    if (hasFetchedRef.current) {
-      console.log("Already fetched, skipping...");
-      return;
-    }
-
-    const url = `${API_BASE_URL}/lunar_events?mode=both`;
-    console.log("Making API request to:", url);
-    setLoading(true);
-    setError(null);
-    hasFetchedRef.current = true;
-
-    fetch(url)
-      .then((res) => {
-        console.log("API response status:", res.status, res.statusText);
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
+    // Subscribe to cache updates
+    const unsubscribe = subscribeToQueryData(lunarEventsQueryKey, (data) => {
+      if (data) {
+        // Handle both single-mode and both-mode responses
+        if (data.events_z13 && data.events_tropical) {
+          // Both mode response
+          setEventsZ13(data.events_z13 || []);
+          setEventsTropical(data.events_tropical || []);
+        } else if (data.events) {
+          // Single mode response - need to fetch both modes
+          // For now, use the cached data for the mode it represents
+          if (data.mode === "z13") {
+            setEventsZ13(data.events || []);
+          } else {
+            setEventsTropical(data.events || []);
+          }
         }
-        return res.json();
-      })
-      .then((data) => {
-        console.log("API response data:", data);
-        setEventsZ13(data.events_z13 || []);
-        setEventsTropical(data.events_tropical || []);
         setStartDate(data.start || null);
         setEndDate(data.end || null);
         setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching lunar events:", err);
-        setError(err.message || "Failed to load lunar events");
-        setLoading(false);
-        hasFetchedRef.current = false; // Allow retry
-      });
-  }, [mounted]); // Removed mode from dependencies to prevent re-fetching
+        setError(null);
+      }
+    });
+    
+    // If we have cached data, use it immediately
+    if (cachedLunarEvents) {
+      if (cachedLunarEvents.events_z13 && cachedLunarEvents.events_tropical) {
+        setEventsZ13(cachedLunarEvents.events_z13 || []);
+        setEventsTropical(cachedLunarEvents.events_tropical || []);
+      } else if (cachedLunarEvents.events) {
+        if (cachedLunarEvents.mode === "z13") {
+          setEventsZ13(cachedLunarEvents.events || []);
+        } else {
+          setEventsTropical(cachedLunarEvents.events || []);
+        }
+      }
+      setStartDate(cachedLunarEvents.start || null);
+      setEndDate(cachedLunarEvents.end || null);
+      setLoading(cachedState?.isLoading || false);
+      setError(cachedState?.error || null);
+    } else if (!hasFetchedRef.current) {
+      // Only fetch if not in cache and we haven't fetched yet
+      hasFetchedRef.current = true;
+      setLoading(true);
+      setError(null);
+
+      const url = `${API_BASE_URL}/lunar_events?mode=both`;
+      fetch(url)
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          setEventsZ13(data.events_z13 || []);
+          setEventsTropical(data.events_tropical || []);
+          setStartDate(data.start || null);
+          setEndDate(data.end || null);
+          setLoading(false);
+        })
+        .catch((err) => {
+          console.error("Error fetching lunar events:", err);
+          setError(err.message || "Failed to load lunar events");
+          setLoading(false);
+          hasFetchedRef.current = false; // Allow retry
+        });
+    }
+    
+    return unsubscribe;
+  }, [mounted, lunarEventsQueryKey, cachedLunarEvents, cachedState]);
 
   // Select events based on current mode - useMemo to ensure updates when mode changes
   const currentEvents = useMemo(() => {
@@ -155,7 +187,7 @@ export function LunarEventsPage() {
 
   if (!mounted || loading) {
     return (
-      <section className="min-h-screen px-4 py-20">
+      <section className="min-h-screen px-4 pt-28 pb-20">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
             <span className="gradient-text">Lunar Currents</span>
@@ -170,7 +202,7 @@ export function LunarEventsPage() {
 
   if (error) {
     return (
-      <section className="min-h-screen px-4 py-20">
+      <section className="min-h-screen px-4 pt-28 pb-20">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
             <span className="gradient-text">Lunar Currents</span>

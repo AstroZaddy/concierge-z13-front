@@ -26,19 +26,19 @@ jobs:
           PUBLIC_API_URL: https://api.z13astrology.com
         run: npm run build
 
-      # Copy dist/ contents to the VPS via SCP
-      - name: Upload dist to server
+      # Copy dist/ folder, package.json, and package-lock.json to the VPS via SCP
+      - name: Upload build files to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: "dist/*"
+          source: "dist/,package.json,package-lock.json,deployment/ecosystem.config.cjs"
           target: ${{ secrets.DEPLOY_PATH }}
 
-      # Reload Caddy after upload
-      - name: Reload Caddy
+      # Install production dependencies and restart the Node.js server
+      - name: Deploy and restart server
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -46,4 +46,28 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script: |
-            sudo systemctl reload caddy
+            cd ${{ secrets.DEPLOY_PATH }}
+            # Install production dependencies
+            npm ci --production || npm install --production
+            # Restart the service using PM2 (recommended) or systemd
+            if command -v pm2 &> /dev/null; then
+              # Use ecosystem config if available, otherwise use inline env vars
+              if [ -f deployment/ecosystem.config.cjs ]; then
+                # Copy ecosystem config to root and update paths
+                cp deployment/ecosystem.config.cjs ecosystem.config.cjs
+                # PM2 ecosystem config script path is relative to cwd, so we run from deployment root
+                pm2 restart z13-frontend || pm2 start ecosystem.config.cjs
+              else
+                # Fallback: start with inline environment variables
+                PORT=8002 NODE_ENV=production PUBLIC_API_URL=https://api.z13astrology.com pm2 restart z13-frontend || \
+                PORT=8002 NODE_ENV=production PUBLIC_API_URL=https://api.z13astrology.com pm2 start dist/server/entry.mjs --name z13-frontend
+              fi
+              # Save PM2 process list
+              pm2 save
+            elif systemctl is-active --quiet z13-frontend; then
+              # Use systemd if service exists
+              sudo systemctl restart z13-frontend
+            else
+              echo "Warning: No process manager found. Please set up PM2 or systemd service."
+              echo "See deployment/README.md for setup instructions."
+            fi

@@ -2,6 +2,15 @@
 import "../styles/global.css";
 import { ParallaxStarfield } from "../components/ui/ParallaxStarfield.jsx";
 import { ClientLayoutWrapper } from "../components/layout/ClientLayoutWrapper.jsx";
+
+interface Props {
+  showLandingPage?: boolean;
+  showLoginPage?: boolean;
+  showBirthChartPage?: boolean;
+  showDefaultChartPage?: boolean;
+}
+
+const { showLandingPage = false, showLoginPage = false, showBirthChartPage = false, showDefaultChartPage = false } = Astro.props;
 ---
 
 <html lang="en">
@@ -33,7 +42,7 @@ import { ClientLayoutWrapper } from "../components/layout/ClientLayoutWrapper.js
 
     <ParallaxStarfield client:only="react" />
 
-    <ClientLayoutWrapper client:load>
+    <ClientLayoutWrapper client:load showLandingPage={showLandingPage} showLoginPage={showLoginPage} showBirthChartPage={showBirthChartPage} showDefaultChartPage={showDefaultChartPage}>
       <div class="pt-20">
         <slot />
       </div>

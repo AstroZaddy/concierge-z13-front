@@ -3,7 +3,7 @@ import { ArrowRightCircle, Map, Moon } from "lucide-react";
 
 export function CtaRow() {
   return (
-    <section className="py-20 px-4 max-w-6xl mx-auto text-center">
+    <section className="py-10 px-4 max-w-6xl mx-auto text-center">
       <h2 className="text-3xl md:text-4xl font-bold mb-12">
         Start Your <span className="gradient-text">Cosmic Journey</span>
       </h2>
@@ -13,11 +13,10 @@ export function CtaRow() {
         <a href="/natal/create" className="block">
           <NeonCard
             icon={<ArrowRightCircle className="text-neon-purple" size={32} />}
-            title="Find Your Real Sign"
+            title="Create your free natal chart"
           >
             <p>
-              Discover your Tropical <strong>and</strong> Z13 True-Sky signs -
-              side-by-side. Accurate, personal, and eye-opening.
+              See the placement of all the heavenly bodies when you were born - both traditional and true sky sidereal!
             </p>
           </NeonCard>
         </a>

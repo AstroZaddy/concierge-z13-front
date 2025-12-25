@@ -1,0 +1,11 @@
+---
+import MainLayout from "../layouts/MainLayout.astro";
+import { DiagnosticsPageContent } from "../components/pages/DiagnosticsPageContent.jsx";
+import { Footer } from "../layouts/Footer.jsx";
+---
+
+<MainLayout>
+  <DiagnosticsPageContent client:load />
+  <Footer client:load />
+</MainLayout>
+

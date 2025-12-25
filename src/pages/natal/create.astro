@@ -1,11 +1,9 @@
 ---
 import MainLayout from "../../layouts/MainLayout.astro";
-import { BirthChartPage } from "../../components/pages/BirthChartPage.jsx";
 import { Footer } from "../../layouts/Footer.jsx";
 ---
 
-<MainLayout>
-  <BirthChartPage client:load />
+<MainLayout showBirthChartPage={true}>
   <Footer client:load />
 </MainLayout>
 

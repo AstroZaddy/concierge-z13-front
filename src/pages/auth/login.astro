@@ -1,0 +1,9 @@
+---
+import MainLayout from "../../layouts/MainLayout.astro";
+import { Footer } from "../../layouts/Footer.jsx";
+---
+
+<MainLayout showLoginPage={true}>
+  <Footer client:load />
+</MainLayout>
+

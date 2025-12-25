@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { NeonButton } from "../ui/NeonButton";
+import { useUserData } from "../../contexts/UserDataContext";
 
 // Use relative /api path for client-side calls (works through Caddy proxy)
 const API_BASE_URL = "/api";
@@ -25,14 +26,226 @@ export function BirthChartPage() {
   const [natalTropical, setNatalTropical] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Save chart state
+  const [savingChart, setSavingChart] = useState(false);
+  const [chartSaved, setChartSaved] = useState(false);
+  const [chartJustCreated, setChartJustCreated] = useState(false);
 
   // Interpretations state
   const [interpretations, setInterpretations] = useState({});
   const [loadingInterpretations, setLoadingInterpretations] = useState(false);
   const [expandedCards, setExpandedCards] = useState(new Set());
 
+  // Form collapse state - collapse when chart is available
+  const [formExpanded, setFormExpanded] = useState(true);
+
+  // Use user data from context
+  const { isAuthenticated, authChecked, defaultNatal, refreshNatalData } = useUserData();
+
   // Debounce timer for location search
   const locationSearchTimeoutRef = useRef(null);
+
+  // Saved natal data state (using defaultNatal from context)
+  const savedNatalData = defaultNatal;
+  const [loadingSavedChart, setLoadingSavedChart] = useState(false);
+
+  // Load saved chart when defaultNatal is available
+  useEffect(() => {
+    if (!isAuthenticated || !defaultNatal) {
+      return;
+    }
+
+    loadSavedChart();
+  }, [isAuthenticated, defaultNatal]);
+
+  // Load saved natal chart from snapshot
+  const loadSavedChart = async () => {
+    try {
+      setLoadingSavedChart(true);
+      
+      // Get default chart
+      const chartResponse = await fetch(`${API_BASE_URL}/charts/default`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!chartResponse.ok) {
+        console.log("No default chart found or not authenticated");
+        setLoadingSavedChart(false);
+        return;
+      }
+
+      const chartData = await chartResponse.json();
+      const chart = chartData.chart;
+      
+      if (!chart) {
+        console.log("No chart data in response");
+        setLoadingSavedChart(false);
+        return;
+      }
+
+      // Store chart metadata for reference
+      const chartMeta = {
+        id: chart.meta.id,
+        name: chart.meta.name,
+        birth_datetime_utc: chart.input.datetime_utc,
+        birth_time_provided: chart.input.birth_time_provided,
+        birth_place_name: chart.input.place_name || "",
+        birth_lat: chart.input.lat,
+        birth_lon: chart.input.lon,
+        birth_timezone: chart.input.timezone,
+        is_default: chart.meta.is_default,
+      };
+      setSavedNatalData(chartMeta);
+
+      // Convert chart computed positions to format expected by chart display
+      const convertChartToDisplayFormat = (chartData, zodiacMode) => {
+        const computed = chartData.computed;
+        const positions = (computed.positions || [])
+          .filter(pos => pos.kind === "body" || pos.kind === "point")
+          .map((pos) => {
+            // Handle placement - can be PlacementCore or PlacementBoth
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                // PlacementBoth - select based on zodiacMode
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                // PlacementCore
+                placement = {
+                  sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              body: pos.key,
+              longitude: pos.lon_deg,
+              latitude: pos.lat_deg || 0,
+              placement,
+            };
+          });
+
+        const angles = (computed.positions || [])
+          .filter(pos => pos.kind === "angle")
+          .map((pos) => {
+            // Handle placement - can be PlacementCore or PlacementBoth
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                // PlacementBoth - select based on zodiacMode
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                // PlacementCore
+                placement = {
+            sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              angle: pos.key,
+              longitude: pos.lon_deg,
+              placement,
+            };
+          });
+
+        return {
+          positions,
+          angles,
+          metadata: {
+            mode: zodiacMode,
+            datetime_local: chartData.input.datetime_utc,
+            datetime_utc: chartData.input.datetime_utc,
+            location: {
+              latitude: chartData.input.lat,
+              longitude: chartData.input.lon,
+              timezone: chartData.input.timezone,
+              name: chartData.input.place_name || "",
+            },
+          },
+        };
+      };
+
+      // Set chart data for both systems
+      // Check if computed.mode is "both" or single mode
+      const computedMode = chart.computed.mode;
+      if (computedMode === "both") {
+        // Both systems available - extract both
+        const z13Chart = convertChartToDisplayFormat(chart, "z13");
+        const tropicalChart = convertChartToDisplayFormat(chart, "tropical");
+        setNatalZ13(z13Chart);
+        setNatalTropical(tropicalChart);
+      } else {
+        // Single system - use for both displays
+        const chartData = convertChartToDisplayFormat(chart, computedMode);
+        if (computedMode === "z13") {
+          setNatalZ13(chartData);
+          // Also set as tropical (will be filtered by mode selector)
+          setNatalTropical({ ...chartData, metadata: { ...chartData.metadata, mode: "tropical" } });
+        } else {
+          setNatalTropical(chartData);
+          // Also set as z13 (will be filtered by mode selector)
+          setNatalZ13({ ...chartData, metadata: { ...chartData.metadata, mode: "z13" } });
+        }
+      }
+
+      // Pre-fill form with saved data
+      setName(chart.meta.name || "");
+      
+      // Parse datetime to fill date and time fields
+      const birthDate = new Date(chart.input.datetime_utc);
+      const localDate = chart.input.timezone 
+        ? new Date(birthDate.toLocaleString("en-US", { timeZone: chart.input.timezone }))
+        : birthDate;
+      setBirthDate(localDate.toISOString().split('T')[0]);
+      
+      // Extract time if available
+      if (chart.input.birth_time_provided) {
+        const hours = String(localDate.getHours()).padStart(2, '0');
+        const minutes = String(localDate.getMinutes()).padStart(2, '0');
+        setBirthTime(`${hours}:${minutes}`);
+        setTimeUnknown(false);
+      } else {
+        setTimeUnknown(true);
+      }
+
+      // Set location
+      setSelectedLocation({
+        city: (chart.input.place_name || "").split(',')[0] || chart.input.place_name || "",
+        region: null,
+        country: null,
+        latitude: chart.input.lat,
+        longitude: chart.input.lon,
+        timezone: chart.input.timezone,
+      });
+      setLocationInput(chart.input.place_name || "");
+
+    } catch (err) {
+      console.error("Error loading saved chart:", err);
+      // Don't show error to user - they can still create a new chart
+    } finally {
+      setLoadingSavedChart(false);
+    }
+  };
 
   // Initialize mode from localStorage and listen for changes
   useEffect(() => {
@@ -83,6 +296,7 @@ export function BirthChartPage() {
         const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
+          console.log("Location search results:", data.results); // Debug log
           setLocationSuggestions(data.results || []);
           setShowSuggestions(true);
         }
@@ -114,14 +328,70 @@ export function BirthChartPage() {
     return { sun, moon, ascendant };
   }, [currentNatal]);
 
-  // Get remaining placements (excluding Big Three and other chart angles)
+  // Get remaining placements (excluding Big Three and other chart angles) in specified order
   const remainingPlacements = useMemo(() => {
     if (!currentNatal) return [];
     const bigThreeBodies = new Set(["Sun", "Moon"]);
     const excludedAngles = new Set(["ASC", "DSC", "MC", "IC"]);
     const positions = currentNatal.positions?.filter((p) => !bigThreeBodies.has(p.body)) || [];
     const angles = currentNatal.angles?.filter((a) => !excludedAngles.has(a.angle)) || [];
-    return [...positions, ...angles];
+    const allPlacements = [...positions, ...angles];
+    
+    // Define order for placements
+    const placementOrder = [
+      "Mercury", "Venus", "Mars", "Jupiter", "Saturn", 
+      "Chiron", "Uranus", "Neptune", "Pluto", "Lilith",
+      "North Node", "NorthNode", "NN",
+      "South Node", "SouthNode", "SN"
+    ];
+    
+    // Helper function to get sort order for a placement
+    const getSortOrder = (placement) => {
+      const label = placement.body || placement.angle || "";
+      const normalizedLabel = label.trim();
+      
+      // Check exact matches first
+      for (let i = 0; i < placementOrder.length; i++) {
+        if (normalizedLabel === placementOrder[i]) {
+          // North Node variants map to same position (index 10)
+          if (normalizedLabel === "North Node" || normalizedLabel === "NorthNode" || normalizedLabel === "NN") {
+            return 10;
+          }
+          // South Node variants map to same position (index 11)
+          if (normalizedLabel === "South Node" || normalizedLabel === "SouthNode" || normalizedLabel === "SN") {
+            return 11;
+          }
+          return i;
+        }
+      }
+      
+      // Check case-insensitive and with spaces
+      const lowerLabel = normalizedLabel.toLowerCase();
+      for (let i = 0; i < placementOrder.length; i++) {
+        const orderLabel = placementOrder[i].toLowerCase();
+        if (lowerLabel === orderLabel || lowerLabel === orderLabel.replace(/\s+/g, "")) {
+          // North Node variants
+          if (i >= 10 && i <= 12) return 10;
+          // South Node variants
+          if (i >= 13) return 11;
+          return i;
+        }
+      }
+      
+      // Check if it contains "north node" or "south node"
+      if (lowerLabel.includes("north") && lowerLabel.includes("node")) return 10;
+      if (lowerLabel.includes("south") && lowerLabel.includes("node")) return 11;
+      
+      // Default: put at end
+      return 999;
+    };
+    
+    // Sort placements by order
+    return allPlacements.sort((a, b) => {
+      const orderA = getSortOrder(a);
+      const orderB = getSortOrder(b);
+      return orderA - orderB;
+    });
   }, [currentNatal]);
 
   // Build natal longitudes for transits API
@@ -142,6 +412,13 @@ export function BirthChartPage() {
     });
     
     return Object.keys(longitudes).length > 0 ? longitudes : null;
+  }, [currentNatal]);
+
+  // Auto-collapse form when chart is loaded
+  useEffect(() => {
+    if (currentNatal) {
+      setFormExpanded(false);
+    }
   }, [currentNatal]);
 
   // Fetch interpretations for Big Three and remaining placements
@@ -194,12 +471,14 @@ export function BirthChartPage() {
       
       // Check if it's a node (North Node or South Node)
       const isNode = placement.body && (
-        label.toLowerCase().includes("north node") || 
-        label.toLowerCase().includes("south node") ||
+        (label.toLowerCase().includes("north") && label.toLowerCase().includes("node")) ||
+        (label.toLowerCase().includes("south") && label.toLowerCase().includes("node")) ||
         label === "NN" || 
         label === "SN" ||
         label === "North Node" ||
-        label === "South Node"
+        label === "South Node" ||
+        label === "NorthNode" ||
+        label === "SouthNode"
       );
       
       let category, slug;
@@ -208,7 +487,7 @@ export function BirthChartPage() {
         // Nodes use node_in_sign category
         category = "node_in_sign";
         // Determine if it's North Node (nn) or South Node (sn)
-        const isNorthNode = label.toLowerCase().includes("north") || label === "NN" || label === "North Node";
+        const isNorthNode = label.toLowerCase().includes("north") || label === "NN" || label === "North Node" || label === "NorthNode";
         const nodePrefix = isNorthNode ? "nn" : "sn";
         slug = `${nodePrefix}_in_${signSlug}`;
       } else {
@@ -261,15 +540,130 @@ export function BirthChartPage() {
     });
   }, [currentNatal, bigThree, remainingPlacements, interpretations]);
 
+  // Save natal data for authenticated users
+  const saveNatalData = async (chartData) => {
+    if (!isAuthenticated || !chartData?.metadata) {
+      return;
+    }
+
+    setSavingChart(true);
+    setChartSaved(false);
+
+    try {
+      // Get location data from chart metadata or form
+      const location = chartData.metadata.location;
+      if (!location) {
+        console.warn("Cannot save natal data: location not available");
+        setSavingChart(false);
+        return;
+      }
+
+      // Convert datetime to UTC format (timezone-aware ISO-8601)
+      // The chart metadata has datetime_utc which is already in UTC
+      let birthDatetimeUtc = chartData.metadata.datetime_utc;
+      
+      // Ensure it's timezone-aware (convert Z to +00:00 if needed)
+      if (birthDatetimeUtc && birthDatetimeUtc.endsWith('Z')) {
+        birthDatetimeUtc = birthDatetimeUtc.replace('Z', '+00:00');
+      } else if (birthDatetimeUtc && !birthDatetimeUtc.includes('+') && !birthDatetimeUtc.includes('-', 10)) {
+        // If no timezone info, assume UTC
+        birthDatetimeUtc = birthDatetimeUtc + '+00:00';
+      }
+      
+      // Get timezone from location or form
+      const timezone = location.timezone || (selectedLocation?.timezone);
+      if (!timezone) {
+        console.warn("Cannot save natal data: timezone not available");
+        setSavingChart(false);
+        return;
+      }
+
+      // Get place name from location or form
+      const placeName = location.name || 
+                       (selectedLocation ? `${selectedLocation.city}, ${selectedLocation.region}, ${selectedLocation.country}` : null) ||
+                       locationInput;
+      if (!placeName) {
+        console.warn("Cannot save natal data: place name not available");
+        setSavingChart(false);
+        return;
+      }
+
+      // Prepare chart payload
+      const chartPayload = {
+        type: "natal",
+        name: name || "My Birth Chart",
+        input: {
+          datetime_utc: birthDatetimeUtc,
+          timezone: timezone,
+          place_name: placeName,
+          lat: location.latitude,
+          lon: location.longitude,
+          birth_time_provided: !timeUnknown,
+          birth_place_provided: !!selectedLocation,
+        },
+        set_as_default: false, // Could be made configurable later
+      };
+
+      // Save chart
+      const saveResponse = await fetch(`${API_BASE_URL}/charts`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(chartPayload),
+      });
+
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json().catch(() => ({}));
+        console.warn("Failed to save natal data:", errorData);
+        setSavingChart(false);
+        throw new Error(errorData.detail || "Failed to save chart");
+      }
+
+      console.log("Natal data saved successfully");
+      setChartSaved(true);
+      
+      // Refresh natal data in context
+      await refreshNatalData();
+    } catch (err) {
+      console.error("Error saving natal data:", err);
+      setError(err.message || "Failed to save chart");
+      throw err;
+    } finally {
+      setSavingChart(false);
+    }
+  };
+  
+  // Handle save chart button click
+  const handleSaveChart = async () => {
+    if (!currentNatal) {
+      return;
+    }
+    
+    try {
+      // Use the current natal data (z13 or tropical) - both should have the same metadata
+      const chartDataToSave = natalZ13 || natalTropical;
+      if (chartDataToSave) {
+        await saveNatalData(chartDataToSave);
+      }
+    } catch (err) {
+      // Error already set in saveNatalData
+      console.error("Error saving chart:", err);
+    }
+  };
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    setNatalZ13(null);
-    setNatalTropical(null);
-    setInterpretations({});
-    setExpandedCards(new Set());
+      setNatalZ13(null);
+      setNatalTropical(null);
+      setInterpretations({});
+      setExpandedCards(new Set());
+      setChartSaved(false);
+      setChartJustCreated(false);
 
     if (!selectedLocation && !locationInput) {
       setError("Please select a birth location");
@@ -302,30 +696,43 @@ export function BirthChartPage() {
       
       console.log("Submitting datetime:", datetimeStr); // Debug log
 
-      // Prepare request body
-      // Use mode="z13" with return_both_systems to get both systems
-      // The /natal endpoint doesn't support mode="both", only mode="z13" or "tropical"
+      // Prepare request body for /charts/natal endpoint (unauthenticated)
+      // Prefer city parameter when available (recommended approach)
       const requestBody = {
         datetime: datetimeStr,
         mode: "z13",
         return_both_systems: true,
+        include_nodes: true,
+        include_lilith: true,
       };
 
-      // Add location
-      if (selectedLocation) {
+      // Prefer city parameter (recommended approach per API docs)
+      // Build city string from selectedLocation or use locationInput
+      if (selectedLocation?.city) {
+        // Build city string: prefer "city, region, country" format for disambiguation
+        let cityString = selectedLocation.city;
+        if (selectedLocation.region) {
+          cityString += `, ${selectedLocation.region}`;
+        }
+        if (selectedLocation.country) {
+          cityString += `, ${selectedLocation.country}`;
+        }
+        requestBody.city = cityString;
+      } else if (locationInput) {
+        // Use locationInput as city name
+        requestBody.city = locationInput;
+      } else if (selectedLocation) {
+        // Fallback to explicit location object if no city name available
         requestBody.location = {
           latitude: selectedLocation.latitude,
           longitude: selectedLocation.longitude,
-          timezone: selectedLocation.timezone,
+          timezone: selectedLocation.timezone || undefined,
         };
-      } else {
-        // Try using city name
-        requestBody.city = locationInput;
       }
 
       console.log("Request body:", JSON.stringify(requestBody, null, 2)); // Debug log
 
-      const response = await fetch(`${API_BASE_URL}/natal`, {
+      const response = await fetch(`${API_BASE_URL}/charts/natal`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -334,9 +741,25 @@ export function BirthChartPage() {
       });
 
       if (!response.ok) {
-        // If mode="both" fails, try with mode="z13" and return_both_systems
-        // FastAPI validation errors come as 422, so check both 400 and 422
-        if (requestBody.mode === "both" && (response.status === 400 || response.status === 422)) {
+        // Handle 409 - Ambiguous city (multiple matches)
+        if (response.status === 409) {
+          const errorData = await response.json().catch(() => ({}));
+          const candidates = errorData.detail?.candidates || [];
+          if (candidates.length > 0) {
+            throw new Error(`AMBIGUOUS_CITY: ${JSON.stringify(candidates)}`);
+          }
+          throw new Error("Multiple cities found with that name. Please be more specific (e.g., 'Springfield, IL').");
+        }
+
+        // Handle 404 - City not found
+        if (response.status === 404) {
+          const errorData = await response.json().catch(() => ({}));
+          const query = errorData.detail?.query || locationInput || "the specified city";
+          throw new Error(`City not found: ${query}. Please check the spelling and try again.`);
+        }
+
+        // Handle 422 - Validation error
+        if (response.status === 422) {
           const errorData = await response.json().catch(() => ({}));
           
           // Check if error is about mode
@@ -360,8 +783,9 @@ export function BirthChartPage() {
           if (isModeError) {
             // Fallback to documented approach
             requestBody.mode = "z13";
-            const retryResponse = await fetch(`${API_BASE_URL}/natal`, {
+            const retryResponse = await fetch(`${API_BASE_URL}/charts/natal`, {
               method: "POST",
+              credentials: "include",
               headers: {
                 "Content-Type": "application/json",
               },
@@ -409,17 +833,44 @@ export function BirthChartPage() {
 
               setNatalZ13(z13Data);
               setNatalTropical(tropicalData);
+              setChartJustCreated(true);
+              
+              // Don't auto-save - user will click "Save Chart" button
+              // await saveNatalData(z13Data);
             } else {
               if (retryData.metadata?.mode === "tropical") {
                 setNatalTropical(retryData);
               } else {
                 setNatalZ13(retryData);
               }
+              
+              // Save natal data for authenticated users
+              // Don't auto-save - user will click "Save Chart" button
+              // await saveNatalData(retryData);
             }
             
             setLoading(false);
             return;
           }
+        }
+        
+        // Handle 500 - Date out of range
+        if (response.status === 500) {
+          const errorData = await response.json().catch(() => ({}));
+          if (errorData.detail?.error?.includes("out of supported range") || errorData.detail?.error?.includes("range")) {
+            const range = errorData.detail?.range_supported || "1800-01-01 to 2150-12-31";
+            throw new Error(`Date out of supported range. Supported dates: ${range}`);
+          }
+        }
+
+        // Handle 502 Bad Gateway and other server errors
+        if (response.status === 502 || response.status === 503) {
+          throw new Error("The server is temporarily unavailable. Please try again in a moment.");
+        }
+
+        // Handle 504 - Timeout
+        if (response.status === 504) {
+          throw new Error("The request timed out. Please try again with simpler parameters.");
         }
         
         const errorData = await response.json().catch(() => ({}));
@@ -443,7 +894,16 @@ export function BirthChartPage() {
         } else if (errorData.detail) {
           errorMessage = JSON.stringify(errorData.detail);
         } else {
-          errorMessage = `HTTP error! status: ${response.status}`;
+          // Provide user-friendly messages for common HTTP errors
+          if (response.status === 502) {
+            errorMessage = "The server is temporarily unavailable. Please try again in a moment.";
+          } else if (response.status === 503) {
+            errorMessage = "The service is temporarily unavailable. Please try again later.";
+          } else if (response.status === 504) {
+            errorMessage = "The request timed out. Please try again.";
+          } else {
+            errorMessage = `HTTP error! status: ${response.status}`;
+          }
         }
         
         throw new Error(errorMessage);
@@ -467,6 +927,11 @@ export function BirthChartPage() {
         };
         setNatalZ13(z13Data);
         setNatalTropical(tropicalData);
+        setChartJustCreated(true);
+        
+        // Don't auto-save - user will click "Save Chart" button
+        // await saveNatalData(z13Data);
+        
         setLoading(false);
         return;
       }
@@ -507,6 +972,10 @@ export function BirthChartPage() {
 
         setNatalZ13(z13Data);
         setNatalTropical(tropicalData);
+        setChartJustCreated(true);
+        
+        // Don't auto-save - user will click "Save Chart" button
+        // await saveNatalData(z13Data);
       } else {
         // Single system response - assign based on metadata.mode
         if (data.metadata?.mode === "tropical") {
@@ -514,6 +983,10 @@ export function BirthChartPage() {
         } else {
           setNatalZ13(data);
         }
+        setChartJustCreated(true);
+        
+        // Don't auto-save - user will click "Save Chart" button
+        // await saveNatalData(data);
       }
 
       setLoading(false);
@@ -544,19 +1017,21 @@ export function BirthChartPage() {
     
     // Check if it's a node (either by type parameter or by name detection)
     const isNode = type === "node" || (bodyOrAngle && (
-      bodyOrAngle.toLowerCase().includes("north node") || 
-      bodyOrAngle.toLowerCase().includes("south node") ||
+      (bodyOrAngle.toLowerCase().includes("north") && bodyOrAngle.toLowerCase().includes("node")) ||
+      (bodyOrAngle.toLowerCase().includes("south") && bodyOrAngle.toLowerCase().includes("node")) ||
       bodyOrAngle === "NN" || 
       bodyOrAngle === "SN" ||
       bodyOrAngle === "North Node" ||
-      bodyOrAngle === "South Node"
+      bodyOrAngle === "South Node" ||
+      bodyOrAngle === "NorthNode" ||
+      bodyOrAngle === "SouthNode"
     ));
     
     let category, interpretationSlug;
     
     if (isNode) {
       category = "node_in_sign";
-      const isNorthNode = bodyOrAngle.toLowerCase().includes("north") || bodyOrAngle === "NN" || bodyOrAngle === "North Node";
+      const isNorthNode = bodyOrAngle.toLowerCase().includes("north") || bodyOrAngle === "NN" || bodyOrAngle === "North Node" || bodyOrAngle === "NorthNode";
       const nodePrefix = isNorthNode ? "nn" : "sn";
       interpretationSlug = `${nodePrefix}_in_${slug}`;
     } else {
@@ -629,8 +1104,8 @@ export function BirthChartPage() {
 
     return (
       <div
-        className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
-          hasInterpretation ? "cursor-pointer shadow-neon" : ""
+        className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm hover:shadow-neon transition-all duration-300 ${
+          hasInterpretation ? "cursor-pointer shadow-[0_0_15px_rgba(139,92,246,0.3)]" : ""
         }`}
         onClick={() => hasInterpretation && toggleCard(cardKey)}
         role={hasInterpretation ? "button" : undefined}
@@ -720,12 +1195,14 @@ export function BirthChartPage() {
     
     // Check if it's a node
     const isNode = placement.body && (
-      label.toLowerCase().includes("north node") || 
-      label.toLowerCase().includes("south node") ||
+      (label.toLowerCase().includes("north") && label.toLowerCase().includes("node")) ||
+      (label.toLowerCase().includes("south") && label.toLowerCase().includes("node")) ||
       label === "NN" || 
       label === "SN" ||
       label === "North Node" ||
-      label === "South Node"
+      label === "South Node" ||
+      label === "NorthNode" ||
+      label === "SouthNode"
     );
     
     // Determine if it's a planet, angle, or node
@@ -740,8 +1217,8 @@ export function BirthChartPage() {
     return (
       <div
         key={`${label}-${idx}`}
-        className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm transition-all duration-300 ${
-          hasInterpretation ? "cursor-pointer shadow-neon" : ""
+        className={`p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm hover:shadow-neon transition-all duration-300 ${
+          hasInterpretation ? "cursor-pointer shadow-[0_0_15px_rgba(139,92,246,0.3)]" : ""
         }`}
         onClick={() => hasInterpretation && toggleCard(cardKey)}
         role={hasInterpretation ? "button" : undefined}
@@ -807,6 +1284,32 @@ export function BirthChartPage() {
     );
   };
 
+  // Build transits URL with birth info
+  const transitsUrl = useMemo(() => {
+    if (!currentNatal || !natalLongitudes) return null;
+    
+    const metadata = currentNatal.metadata;
+    const birthData = savedNatalData || (metadata ? {
+      name: name || "Unknown",
+      birth_datetime_utc: metadata.datetime_utc || metadata.datetime_local,
+      birth_time_provided: metadata.datetime_utc ? metadata.datetime_utc.includes('T') && !metadata.datetime_utc.endsWith('T12:00:00') : false,
+      birth_place_name: metadata.location?.name || "",
+      birth_timezone: metadata.location?.timezone,
+    } : null);
+    
+    const params = new URLSearchParams();
+    params.set("natal_longitudes", JSON.stringify(natalLongitudes));
+    if (birthData) {
+      if (birthData.name) params.set("name", birthData.name);
+      if (birthData.birth_datetime_utc) params.set("birth_datetime_utc", birthData.birth_datetime_utc);
+      if (birthData.birth_time_provided !== undefined) params.set("birth_time_provided", String(birthData.birth_time_provided));
+      if (birthData.birth_place_name) params.set("birth_place_name", birthData.birth_place_name);
+      if (birthData.birth_timezone) params.set("birth_timezone", birthData.birth_timezone);
+    }
+    
+    return `/natal/transits?${params.toString()}`;
+  }, [currentNatal, natalLongitudes, savedNatalData, name]);
+
   if (!mounted) {
     return null; // SSR safety
   }
@@ -817,8 +1320,80 @@ export function BirthChartPage() {
     bigThree.moon && getInterpretation("planet", "Moon", getSign(bigThree.moon.placement)) &&
     bigThree.ascendant && getInterpretation("angle", "Ascendant", getSign(bigThree.ascendant.placement));
 
+  // Format birth information for display
+  const formatBirthInfo = () => {
+    if (!currentNatal) return null;
+    
+    const metadata = currentNatal.metadata;
+    
+    // Get location name from various sources
+    let locationName = "";
+    if (selectedLocation) {
+      // Build location string from selectedLocation
+      const parts = [selectedLocation.city];
+      if (selectedLocation.region) parts.push(selectedLocation.region);
+      if (selectedLocation.country) parts.push(selectedLocation.country);
+      locationName = parts.join(", ");
+    } else if (locationInput) {
+      locationName = locationInput;
+    }
+    
+    const birthData = savedNatalData || (metadata ? {
+      name: name || "Unknown",
+      birth_datetime_utc: metadata.datetime_utc || metadata.datetime_local,
+      birth_time_provided: metadata.datetime_utc ? metadata.datetime_utc.includes('T') && !metadata.datetime_utc.endsWith('T12:00:00') : false,
+      birth_place_name: metadata.location?.name || locationName || "",
+      birth_lat: metadata.location?.latitude,
+      birth_lon: metadata.location?.longitude,
+      birth_timezone: metadata.location?.timezone,
+    } : null);
+    
+    if (!birthData) return null;
+    
+    const info = [];
+    
+    // Name
+    if (birthData.name) {
+      info.push({ label: "Name", value: birthData.name });
+    }
+    
+    // Date of birth
+    if (birthData.birth_datetime_utc) {
+      const birthDate = new Date(birthData.birth_datetime_utc);
+      const localDate = birthData.birth_timezone 
+        ? new Date(birthDate.toLocaleString("en-US", { timeZone: birthData.birth_timezone }))
+        : birthDate;
+      const dateStr = localDate.toLocaleDateString("en-US", { 
+        year: "numeric", 
+        month: "long", 
+        day: "numeric" 
+      });
+      info.push({ label: "Date of Birth", value: dateStr });
+      
+      // Time (if known)
+      if (birthData.birth_time_provided) {
+        const timeStr = localDate.toLocaleTimeString("en-US", { 
+          hour: "2-digit", 
+          minute: "2-digit",
+          timeZone: birthData.birth_timezone || undefined
+        });
+        info.push({ label: "Time", value: timeStr });
+      }
+    }
+    
+    // Location (if known) - use the best available source
+    const displayLocation = birthData.birth_place_name || locationName;
+    if (displayLocation) {
+      info.push({ label: "Location", value: displayLocation });
+    }
+    
+    return info;
+  };
+
+  const birthInfo = formatBirthInfo();
+
   return (
-    <section className="min-h-screen px-4 py-20">
+    <section className="min-h-screen px-4 pt-28 pb-20">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
@@ -828,11 +1403,62 @@ export function BirthChartPage() {
           <p className="text-gray-400 text-sm md:text-base">
             Mode: <span className="text-neon-cyan font-semibold">{modeLabel}</span>
           </p>
+          {loadingSavedChart && (
+            <p className="text-gray-400 text-sm mt-2">Loading your saved chart...</p>
+          )}
         </div>
 
+        {/* Birth Information */}
+        {birthInfo && birthInfo.length > 0 && currentNatal && (
+          <div className="mb-8 p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
+            <h2 className="text-xl font-bold text-gray-100 mb-4">Birth Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {birthInfo.map((item, idx) => (
+                <div key={idx}>
+                  <div className="text-sm text-gray-400 mb-1">{item.label}</div>
+                  <div className="text-base text-gray-200 font-semibold">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Message for authenticated users without default chart */}
+        {authChecked && isAuthenticated && !defaultNatal && !currentNatal && !loading && (
+          <div className="mb-8 p-6 rounded-xl bg-white/5 border border-cyan-500/40 backdrop-blur-sm">
+            <p className="text-gray-200 text-lg text-center">
+              You have not set a default chart. Enter the following to create a birth chart.
+            </p>
+          </div>
+        )}
+
         {/* Birth Data Form */}
-        <form onSubmit={handleSubmit} className="mb-12 p-6 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="mb-12 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm overflow-hidden">
+          {/* Form Header with Toggle */}
+          <div className="p-4 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-100">Birth Data</h2>
+            <button
+              type="button"
+              onClick={() => setFormExpanded(!formExpanded)}
+              className="flex items-center gap-2 text-gray-400 hover:text-neon-cyan transition-colors cursor-pointer"
+              aria-label={formExpanded ? "Collapse form" : "Expand form"}
+            >
+              <span className="text-sm">{formExpanded ? "Hide" : "Show"} Form</span>
+              <svg
+                className={`w-5 h-5 transition-transform duration-300 ${formExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Collapsible Form Content */}
+          <div className={`transition-all duration-300 ease-in-out ${formExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+            <form onSubmit={handleSubmit} className="p-6 pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Name (optional) */}
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -927,14 +1553,14 @@ export function BirthChartPage() {
                       }}
                       className="w-full text-left px-4 py-2 hover:bg-white/5 text-gray-200 transition"
                     >
-                      <div className="font-medium">{loc.city}</div>
-                      {loc.region && loc.country && (
+                      <div className="font-medium">
+                        {loc.city}
+                        {loc.country ? `, ${loc.country}` : ""}
+                      </div>
+                      {loc.region && (
                         <div className="text-sm text-gray-400">
-                          {loc.region}, {loc.country}
+                          {loc.region}
                         </div>
-                      )}
-                      {!loc.region && loc.country && (
-                        <div className="text-sm text-gray-400">{loc.country}</div>
                       )}
                     </button>
                   ))}
@@ -943,7 +1569,7 @@ export function BirthChartPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-6 flex justify-end md:col-span-2">
             <button
               type="submit"
               disabled={loading}
@@ -952,13 +1578,33 @@ export function BirthChartPage() {
               {loading ? "Calculating..." : "Generate Chart"}
             </button>
           </div>
-        </form>
+            </form>
+          </div>
+        </div>
 
         {/* Error State */}
         {error && (
           <div className="mb-8 p-6 rounded-xl bg-red-900/20 border border-red-500/40 text-red-300">
             <p className="font-semibold mb-2">Error</p>
             <p className="text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Save Chart Button - Above chart for newly created charts */}
+        {authChecked && isAuthenticated && currentNatal && chartJustCreated && (
+          <div className="mb-8 flex justify-center">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
+              {chartSaved && (
+                <span className="text-sm text-green-400">Chart saved!</span>
+              )}
+              <NeonButton
+                onClick={handleSaveChart}
+                disabled={savingChart || chartSaved}
+                className="px-6 py-3"
+              >
+                {savingChart ? "Saving..." : chartSaved ? "Saved" : "Save this chart"}
+              </NeonButton>
+            </div>
           </div>
         )}
 
@@ -985,10 +1631,10 @@ export function BirthChartPage() {
         )}
 
         {/* Personalized cosmic vibes button */}
-        {currentNatal && (bigThree.sun || bigThree.moon || bigThree.ascendant) && natalLongitudes && (
+        {currentNatal && (bigThree.sun || bigThree.moon || bigThree.ascendant) && transitsUrl && (
           <div className="mb-12 flex justify-center">
             <NeonButton 
-              href={`/natal/transits?natal_longitudes=${encodeURIComponent(JSON.stringify(natalLongitudes))}`}
+              href={transitsUrl}
               className="text-lg px-8 py-4"
             >
               Personalized cosmic vibes
