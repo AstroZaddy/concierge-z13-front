@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Hero } from "../sections/Hero";
 import { CtaRow } from "../sections/CtaRow";
 import { ExplainerSection } from "../sections/ExplainerSection";
@@ -7,9 +6,10 @@ import { DailyVibesSection } from "../sections/DailyVibesSection";
 import { Footer } from "../../layouts/Footer";
 import { useSessionBootstrap } from "../../contexts/SessionBootstrapContext";
 import { ConstellationDivider } from "../ui/ConstellationDivider";
+import { useMounted } from "../../hooks/useMounted";
 
 export function LandingPageContent() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   
   // Use session bootstrap data
   const {
@@ -17,10 +17,6 @@ export function LandingPageContent() {
     hasCheckedAuth,
     user,
   } = useSessionBootstrap();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   if (!mounted) {
     return null;

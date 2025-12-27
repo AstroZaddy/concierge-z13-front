@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Star, Trash2 } from "lucide-react";
 import { NeonButton } from "../ui/NeonButton";
 import { Modal } from "../ui/Modal";
-
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 export function AccountPageContent() {
   // Since this component is loaded as a React island with client:load,

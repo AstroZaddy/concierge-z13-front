@@ -3,18 +3,20 @@ import { NeonButton } from "../ui/NeonButton";
 import { Modal } from "../ui/Modal";
 import { useUserData } from "../../contexts/UserDataContext";
 import { useSessionBootstrap } from "../../contexts/SessionBootstrapContext";
-
-// Use relative /api path for client-side calls (works through Caddy proxy)
-const API_BASE_URL = "/api";
-const STORAGE_KEY = "z13-zodiac-mode";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
+import { useZodiacMode } from "../../hooks/useZodiacMode";
+import { formatBirthInfo } from "../../utils/dateFormatters";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 export function BirthChartPage({ pageMode = "create" }) {
   // pageMode: "create" (with form) or "view" (view-only, loads default chart)
   const isViewMode = pageMode === "view";
   
   // Zodiac mode state - sync with global toggle
-  const [mode, setModeState] = useState("z13");
-  const [mounted, setMounted] = useState(false);
+  const { mode } = useZodiacMode();
+  const mounted = useMounted();
 
   // Form state
   const [name, setName] = useState("");
@@ -426,36 +428,6 @@ export function BirthChartPage({ pageMode = "create" }) {
     }
   };
 
-  // Initialize mode from localStorage and listen for changes
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "z13" || stored === "tropical") {
-      setModeState(stored);
-    }
-    setMounted(true);
-
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        if (e.newValue === "z13" || e.newValue === "tropical") {
-          setModeState(e.newValue);
-        }
-      }
-    };
-
-    const handleModeChange = (e) => {
-      if (e.detail && (e.detail === "z13" || e.detail === "tropical")) {
-        setModeState(e.detail);
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("zodiacModeChange", handleModeChange);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("zodiacModeChange", handleModeChange);
-    };
-  }, []);
 
   // Location search with debouncing
   useEffect(() => {

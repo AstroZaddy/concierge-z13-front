@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
+import { formatDate, formatBirthInfo } from "../../utils/dateFormatters";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 // Order of transiting bodies as specified
 const TRANSITING_BODIES = [
@@ -9,7 +12,7 @@ const TRANSITING_BODIES = [
 ];
 
 export function TransitsPage() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [vibesData, setVibesData] = useState(null);
   const [aspectsData, setAspectsData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -93,10 +96,6 @@ export function TransitsPage() {
 
   // Use birth info from URL params or API
   const birthData = birthInfoFromUrl || birthInfoFromApi;
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Fetch vibes data first, then aspects
   useEffect(() => {
@@ -352,57 +351,7 @@ export function TransitsPage() {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [modalAspect, modalVibes]);
 
-  // Format date as "Dec 20, 2025"
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
-  };
-
-  // Format birth information for display
-  const formatBirthInfo = () => {
-    if (!birthData) return null;
-    
-    const info = [];
-    
-    // Name
-    if (birthData.name) {
-      info.push({ label: "Name", value: birthData.name });
-    }
-    
-    // Date of birth
-    if (birthData.birth_datetime_utc) {
-      const birthDate = new Date(birthData.birth_datetime_utc);
-      const localDate = birthData.birth_timezone 
-        ? new Date(birthDate.toLocaleString("en-US", { timeZone: birthData.birth_timezone }))
-        : birthDate;
-      const dateStr = localDate.toLocaleDateString("en-US", { 
-        year: "numeric", 
-        month: "long", 
-        day: "numeric" 
-      });
-      info.push({ label: "Date of Birth", value: dateStr });
-      
-      // Time (if known)
-      if (birthData.birth_time_provided) {
-        const timeStr = localDate.toLocaleTimeString("en-US", { 
-          hour: "2-digit", 
-          minute: "2-digit",
-          timeZone: birthData.birth_timezone || undefined
-        });
-        info.push({ label: "Time", value: timeStr });
-      }
-    }
-    
-    // Location (if known)
-    if (birthData.birth_place_name) {
-      info.push({ label: "Location", value: birthData.birth_place_name });
-    }
-    
-    return info;
-  };
-
-  const birthInfo = formatBirthInfo();
+  const birthInfo = formatBirthInfo(birthData);
 
   if (!mounted) {
     return null; // SSR safety

@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { NeonButton } from "../ui/NeonButton";
 import { useUserData } from "../../contexts/UserDataContext";
-
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
 
 export function LoginPageContent() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [error, setError] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,10 +18,6 @@ export function LoginPageContent() {
   
   // Get user name from natal data
   const userName = defaultNatal?.name || null;
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();

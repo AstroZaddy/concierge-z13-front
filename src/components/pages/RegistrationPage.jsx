@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { NeonButton } from "../ui/NeonButton";
-
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
 
 export function RegistrationPage() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [error, setError] = useState(null);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -14,10 +14,6 @@ export function RegistrationPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registerLoading, setRegisterLoading] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleRegister = async (e) => {
     e.preventDefault();

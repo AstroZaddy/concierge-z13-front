@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NeonButton } from "../ui/NeonButton";
 
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
 
 export function LoginArea() {
   const [email, setEmail] = useState("");

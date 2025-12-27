@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { getCachedQueryData, getCachedQueryState, subscribeToQueryData } from "../../utils/queryClient";
 import { bootstrapQueryKeys } from "../../contexts/SessionBootstrapContext";
-
-// Use relative /api path for client-side calls (works through Caddy proxy)
-const API_BASE_URL = "/api";
-const STORAGE_KEY = "z13-zodiac-mode";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
+import { useZodiacMode } from "../../hooks/useZodiacMode";
+import { formatDateTime } from "../../utils/dateFormatters";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 export function LunarEventsPage() {
   // Check authentication status - since this is a React island with client:load,
@@ -36,10 +38,9 @@ export function LunarEventsPage() {
       });
   }, []);
   
-  // Since we're in a separate React island, we need to read mode directly from localStorage
-  // and listen for storage events to sync with the toggle
-  const [mode, setModeState] = useState("z13");
-  const [isHydrated, setIsHydrated] = useState(false);
+  // Use zodiac mode hook
+  const { mode, isHydrated } = useZodiacMode();
+  const mounted = useMounted();
   
   // Always use 7 days for query key and fetching
   const lunarEventsQueryKey = bootstrapQueryKeys.lunar.events(fetchDays, "z13");
@@ -53,57 +54,6 @@ export function LunarEventsPage() {
   const [loading, setLoading] = useState(!cachedLunarEvents);
   const [error, setError] = useState(cachedState?.error || null);
   const hasFetchedRef = useRef(false);
-  const [mounted, setMounted] = useState(false);
-  const prevModeRef = useRef(mode);
-
-  // Initialize mode from localStorage and listen for changes
-  useEffect(() => {
-    // Initial load
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "z13" || stored === "tropical") {
-      setModeState(stored);
-    }
-    setIsHydrated(true);
-    setMounted(true);
-
-    // Listen for storage events (triggered when other components update localStorage)
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        if (e.newValue === "z13" || e.newValue === "tropical") {
-          console.log("📡 Storage event: mode changed to", e.newValue);
-          setModeState(e.newValue);
-        }
-      }
-    };
-
-    // Listen for custom events (for same-tab communication)
-    const handleModeChange = (e) => {
-      if (e.detail && (e.detail === "z13" || e.detail === "tropical")) {
-        console.log("📡 Custom event: mode changed to", e.detail);
-        setModeState(e.detail);
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("zodiacModeChange", handleModeChange);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("zodiacModeChange", handleModeChange);
-    };
-  }, []); // Only run once on mount
-
-  // Direct logging to see mode changes
-  useEffect(() => {
-    if (prevModeRef.current !== mode) {
-      console.log("🔥 MODE CHANGE DETECTED:", {
-        from: prevModeRef.current,
-        to: mode,
-        timestamp: new Date().toISOString()
-      });
-      prevModeRef.current = mode;
-    }
-  }, [mode]);
 
   // Subscribe to lunar events cache updates and use cached data if available
   useEffect(() => {
@@ -211,21 +161,6 @@ export function LunarEventsPage() {
 
   const modeLabel = mode === "z13" ? "Z13 (true-sky)" : "Tropical";
 
-  // Format datetime for display
-  const formatDateTime = (isoString) => {
-    if (!isoString) return "";
-    const date = new Date(isoString);
-    const options = {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    };
-    return date.toLocaleString("en-US", options);
-  };
-
   // Format phase name for display
   const formatPhase = (phase) => {
     if (!phase) return "";
@@ -236,34 +171,11 @@ export function LunarEventsPage() {
   };
 
   if (!mounted || loading) {
-    return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-            <span className="gradient-text">Lunar Currents</span>
-          </h1>
-          <div className="flex items-center justify-center mt-8">
-            <div className="animate-pulse text-gray-400">Loading lunar events...</div>
-          </div>
-        </div>
-      </section>
-    );
+    return <LoadingState message="Loading lunar events..." />;
   }
 
   if (error) {
-    return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-            <span className="gradient-text">Lunar Currents</span>
-          </h1>
-          <div className="mt-8 p-6 rounded-xl bg-red-900/20 border border-red-500/40 text-red-300 max-w-md mx-auto">
-            <p className="font-semibold mb-2">Error loading lunar events</p>
-            <p className="text-sm">{error}</p>
-          </div>
-        </div>
-      </section>
-    );
+    return <ErrorState error={error || "Error loading lunar events"} />;
   }
 
   return (

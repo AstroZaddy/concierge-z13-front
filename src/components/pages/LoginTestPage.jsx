@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { NeonButton } from "../ui/NeonButton";
 import { useUserData } from "../../contexts/UserDataContext";
 
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
 
 export function LoginTestPage() {
   const [mounted, setMounted] = useState(false);

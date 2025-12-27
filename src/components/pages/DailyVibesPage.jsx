@@ -2,8 +2,11 @@ import { useState, useEffect, useMemo } from "react";
 import { useUserData } from "../../contexts/UserDataContext";
 import { getCachedQueryData, getCachedQueryState, subscribeToQueryData } from "../../utils/queryClient";
 import { bootstrapQueryKeys } from "../../contexts/SessionBootstrapContext";
-
-const API_BASE_URL = "/api";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
+import { formatCalculatedOn, formatBirthInfo } from "../../utils/dateFormatters";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 // Order of transiting bodies as specified
 const TRANSITING_BODIES = [
@@ -12,7 +15,7 @@ const TRANSITING_BODIES = [
 ];
 
 export function DailyVibesPage() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useMounted();
   const [vibesData, setVibesData] = useState(null);
   const [aspectsData, setAspectsData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,10 +36,6 @@ export function DailyVibesPage() {
   const vibesQueryKey = vibesChartId ? bootstrapQueryKeys.transits.vibesNow(vibesChartId, new Date().toISOString().split('T')[0]) : null;
   const cachedVibes = vibesQueryKey ? getCachedQueryData(vibesQueryKey) : null;
   const cachedVibesState = vibesQueryKey ? getCachedQueryState(vibesQueryKey) : null;
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Subscribe to default chart cache updates
   useEffect(() => {
@@ -288,28 +287,6 @@ export function DailyVibesPage() {
     return interpretations[key] || null;
   };
 
-  // Format date/time in user's local timezone
-  const formatCalculatedOn = (timestampUtc, timezone) => {
-    if (!timestampUtc) return "";
-    
-    try {
-      const date = new Date(timestampUtc);
-      // Use Intl.DateTimeFormat to format in the user's timezone
-      const formatter = new Intl.DateTimeFormat("en-US", {
-        timeZone: timezone || "UTC",
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-      return formatter.format(date);
-    } catch (err) {
-      // Fallback to UTC
-      return new Date(timestampUtc).toLocaleString();
-    }
-  };
 
   // Open modal for vibes
   const openVibesModal = (type) => {
@@ -337,33 +314,16 @@ export function DailyVibesPage() {
   }
 
   if (loading) {
-    return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto text-center py-12">
-          <p className="text-gray-400">Loading your daily vibes...</p>
-        </div>
-      </section>
-    );
+    return <LoadingState message="Loading your daily vibes..." />;
   }
 
   if (error) {
     return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto">
-          <div className="p-8 rounded-xl bg-red-900/20 border border-red-500/40 text-red-300 text-center">
-            <p className="font-semibold mb-2">Error</p>
-            <p className="text-sm">{error}</p>
-            {error.includes("No birth chart") && (
-              <a
-                href="/natal/create"
-                className="mt-4 inline-block px-6 py-3 rounded-full font-semibold text-white bg-neon-gradient shadow-neon hover:shadow-neon-magenta hover:scale-[1.02] transition-all duration-300"
-              >
-                Create Birth Chart
-              </a>
-            )}
-          </div>
-        </div>
-      </section>
+      <ErrorState 
+        error={error} 
+        actionLabel={error.includes("No birth chart") ? "Create Birth Chart" : null}
+        actionHref={error.includes("No birth chart") ? "/natal/create" : null}
+      />
     );
   }
 
@@ -371,50 +331,7 @@ export function DailyVibesPage() {
     ? formatCalculatedOn(vibesData.timestamp_utc, natalData?.birth_timezone)
     : "";
 
-  // Format birth information for display
-  const formatBirthInfo = () => {
-    if (!natalData) return null;
-    
-    const info = [];
-    
-    // Name
-    if (natalData.name) {
-      info.push({ label: "Name", value: natalData.name });
-    }
-    
-    // Date of birth
-    if (natalData.birth_datetime_utc) {
-      const birthDate = new Date(natalData.birth_datetime_utc);
-      const localDate = natalData.birth_timezone 
-        ? new Date(birthDate.toLocaleString("en-US", { timeZone: natalData.birth_timezone }))
-        : birthDate;
-      const dateStr = localDate.toLocaleDateString("en-US", { 
-        year: "numeric", 
-        month: "long", 
-        day: "numeric" 
-      });
-      info.push({ label: "Date of Birth", value: dateStr });
-      
-      // Time (if known)
-      if (natalData.birth_time_provided) {
-        const timeStr = localDate.toLocaleTimeString("en-US", { 
-          hour: "2-digit", 
-          minute: "2-digit",
-          timeZone: natalData.birth_timezone || undefined
-        });
-        info.push({ label: "Time", value: timeStr });
-      }
-    }
-    
-    // Location (if known)
-    if (natalData.birth_place_name) {
-      info.push({ label: "Location", value: natalData.birth_place_name });
-    }
-    
-    return info;
-  };
-
-  const birthInfo = formatBirthInfo();
+  const birthInfo = formatBirthInfo(natalData);
 
   return (
     <section className="min-h-screen px-4 pt-28 pb-20">

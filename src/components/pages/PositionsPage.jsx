@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { getCachedQueryData, getCachedQueryState, subscribeToQueryData } from "../../utils/queryClient";
 import { bootstrapQueryKeys } from "../../contexts/SessionBootstrapContext";
-
-const STORAGE_KEY = "z13-zodiac-mode";
+import { API_BASE_URL } from "../../utils/constants";
+import { useMounted } from "../../hooks/useMounted";
+import { useZodiacMode } from "../../hooks/useZodiacMode";
+import { LoadingState } from "../ui/LoadingState";
+import { ErrorState } from "../ui/ErrorState";
 
 export function PositionsPage() {
   // This component is rendered as a separate React island (client:load), so it doesn't have
@@ -24,66 +27,9 @@ export function PositionsPage() {
   const [interpretationsLoading, setInterpretationsLoading] = useState(false);
   const [expandedCards, setExpandedCards] = useState(new Set());
   
-  // Since we're in a separate React island, we need to read mode directly from localStorage
-  // and listen for storage events to sync with the toggle
-  const [mode, setModeState] = useState("z13");
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const prevModeRef = useRef(mode);
-
-  // Initialize mode from localStorage and listen for changes
-  useEffect(() => {
-    // Initial load
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "z13" || stored === "tropical") {
-      setModeState(stored);
-    }
-    setIsHydrated(true);
-    setMounted(true);
-
-    // Listen for storage events (triggered when other components update localStorage)
-    const handleStorageChange = (e) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        if (e.newValue === "z13" || e.newValue === "tropical") {
-          console.log("📡 Storage event: mode changed to", e.newValue);
-          setModeState(e.newValue);
-        }
-      }
-    };
-
-    // Listen for custom events (for same-tab communication)
-    const handleModeChange = (e) => {
-      if (e.detail && (e.detail === "z13" || e.detail === "tropical")) {
-        console.log("📡 Custom event: mode changed to", e.detail);
-        setModeState(e.detail);
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    window.addEventListener("zodiacModeChange", handleModeChange);
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("zodiacModeChange", handleModeChange);
-    };
-  }, []); // Only run once on mount
-
-  // Direct logging to see mode changes
-  useEffect(() => {
-    if (prevModeRef.current !== mode) {
-      console.log("🔥 MODE CHANGE DETECTED:", {
-        from: prevModeRef.current,
-        to: mode,
-        timestamp: new Date().toISOString()
-      });
-      prevModeRef.current = mode;
-    }
-  }, [mode]);
-
-  // Ensure we're in the browser
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Use zodiac mode hook
+  const { mode } = useZodiacMode();
+  const mounted = useMounted();
 
   // Subscribe to positions cache updates from SessionBootstrapContext
   useEffect(() => {
@@ -109,7 +55,7 @@ export function PositionsPage() {
       setPositionsLoading(true);
       setPositionsError(null);
 
-      fetch("/api/positions?mode=both", {
+      fetch(`${API_BASE_URL}/positions?mode=both`, {
         credentials: "include",
       })
         .then((res) => {
@@ -228,7 +174,7 @@ export function PositionsPage() {
     setInterpretationsLoading(true);
     Promise.all(
       toFetch.map(({ category, slug, key }) =>
-        fetch(`/api/interpretations/${category}/${slug}`, {
+        fetch(`${API_BASE_URL}/interpretations/${category}/${slug}`, {
           credentials: "include",
         })
           .then((res) => (res.ok ? res.json() : null))
@@ -311,34 +257,11 @@ export function PositionsPage() {
   };
 
   if (!mounted || loading) {
-    return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-            <span className="gradient-text">Current Celestials Vibes</span>
-          </h1>
-          <div className="flex items-center justify-center mt-8">
-            <div className="animate-pulse text-gray-400">Loading cosmic data...</div>
-          </div>
-        </div>
-      </section>
-    );
+    return <LoadingState message="Loading cosmic data..." />;
   }
 
   if (error) {
-    return (
-      <section className="min-h-screen px-4 pt-28 pb-20">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-            <span className="gradient-text">Current Celestials Vibes</span>
-          </h1>
-          <div className="mt-8 p-6 rounded-xl bg-red-900/20 border border-red-500/40 text-red-300 max-w-md mx-auto">
-            <p className="font-semibold mb-2">Error loading positions</p>
-            <p className="text-sm">{error}</p>
-          </div>
-        </div>
-      </section>
-    );
+    return <ErrorState error={error || "Error loading positions"} />;
   }
 
   return (
