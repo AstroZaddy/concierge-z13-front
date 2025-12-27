@@ -5,7 +5,6 @@ import { Navbar } from "../../layouts/Navbar.jsx";
 import { LandingPageContent } from "../pages/LandingPageContent.jsx";
 import { LoginPageContent } from "../pages/LoginPageContent.jsx";
 import { BirthChartPageContent } from "../pages/BirthChartPageContent.jsx";
-import { DefaultChartViewPage } from "../pages/DefaultChartViewPage.jsx";
 
 export function ClientLayoutWrapper({ children, showLandingPage, showLoginPage, showBirthChartPage, showDefaultChartPage }) {
   return (
@@ -13,7 +12,7 @@ export function ClientLayoutWrapper({ children, showLandingPage, showLoginPage, 
       <SessionBootstrapProvider>
       <UserDataProvider>
         <Navbar />
-        {showLandingPage ? <LandingPageContent /> : showLoginPage ? <LoginPageContent /> : showBirthChartPage ? <BirthChartPageContent /> : showDefaultChartPage ? <DefaultChartViewPage /> : children}
+        {showLandingPage ? <LandingPageContent /> : showLoginPage ? <LoginPageContent /> : showBirthChartPage ? <BirthChartPageContent pageMode="create" /> : showDefaultChartPage ? <BirthChartPageContent pageMode="view" /> : children}
       </UserDataProvider>
       </SessionBootstrapProvider>
     </ZodiacModeProvider>

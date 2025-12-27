@@ -7,13 +7,42 @@ const API_BASE_URL = "/api";
 const STORAGE_KEY = "z13-zodiac-mode";
 
 export function LunarEventsPage() {
+  // Check authentication status - since this is a React island with client:load,
+  // we can't reliably access SessionBootstrap context, so we check via API
+  // Default to unauthenticated (3 days) until we know otherwise
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  
+  // Always fetch 7 days, but display limit based on authentication
+  const displayDays = isAuthenticated ? 7 : 3;
+  const fetchDays = 7; // Always fetch 7 days
+  
+  // Check authentication status on mount
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/auth/me`, {
+      credentials: "include",
+    })
+      .then((res) => {
+        if (res.ok) {
+          setIsAuthenticated(true);
+        } else {
+          setIsAuthenticated(false);
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setIsAuthenticated(false);
+        setAuthChecked(true);
+      });
+  }, []);
+  
   // Since we're in a separate React island, we need to read mode directly from localStorage
   // and listen for storage events to sync with the toggle
   const [mode, setModeState] = useState("z13");
   const [isHydrated, setIsHydrated] = useState(false);
   
-  // Try to get preloaded lunar events from cache first
-  const lunarEventsQueryKey = bootstrapQueryKeys.lunar.events(5, "z13");
+  // Always use 7 days for query key and fetching
+  const lunarEventsQueryKey = bootstrapQueryKeys.lunar.events(fetchDays, "z13");
   const cachedLunarEvents = getCachedQueryData(lunarEventsQueryKey);
   const cachedState = getCachedQueryState(lunarEventsQueryKey);
   
@@ -126,7 +155,7 @@ export function LunarEventsPage() {
       setLoading(true);
       setError(null);
 
-      const url = `${API_BASE_URL}/lunar_events?mode=both`;
+      const url = `${API_BASE_URL}/lunar_events?days=${fetchDays}&mode=both`;
       fetch(url)
         .then((res) => {
           if (!res.ok) {
@@ -150,14 +179,35 @@ export function LunarEventsPage() {
     }
     
     return unsubscribe;
-  }, [mounted, lunarEventsQueryKey, cachedLunarEvents, cachedState]);
+  }, [mounted, lunarEventsQueryKey, cachedLunarEvents, cachedState, fetchDays]);
 
-  // Select events based on current mode - useMemo to ensure updates when mode changes
+  // Select events based on current mode and filter by displayDays
   const currentEvents = useMemo(() => {
     const selected = mode === "z13" ? eventsZ13 : eventsTropical;
-    console.log("currentEvents updated", { mode, count: selected.length });
+    
+    // Filter to only show events within displayDays
+    if (displayDays < 7 && selected.length > 0) {
+      const now = new Date();
+      const cutoffDate = new Date(now);
+      cutoffDate.setDate(cutoffDate.getDate() + displayDays);
+      
+      return selected.filter(event => {
+        const eventDate = new Date(event.datetime);
+        return eventDate <= cutoffDate;
+      });
+    }
+    
     return selected;
-  }, [mode, eventsZ13, eventsTropical]);
+  }, [mode, eventsZ13, eventsTropical, displayDays]);
+
+  // Calculate display end date based on displayDays
+  const displayEndDate = useMemo(() => {
+    if (!startDate) return null;
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + displayDays - 1);
+    return end.toISOString();
+  }, [startDate, displayDays]);
 
   const modeLabel = mode === "z13" ? "Z13 (true-sky)" : "Tropical";
 
@@ -227,9 +277,9 @@ export function LunarEventsPage() {
           <p className="text-gray-400 text-sm md:text-base">
             Mode: <span className="text-neon-cyan font-semibold">{modeLabel}</span>
           </p>
-          {startDate && endDate && (
+          {startDate && displayEndDate && (
             <p className="text-gray-500 text-xs mt-2">
-              Showing events from {formatDateTime(startDate)} to {formatDateTime(endDate)}
+              Showing events from {formatDateTime(startDate)} to {formatDateTime(displayEndDate)}
             </p>
           )}
         </div>

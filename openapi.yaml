@@ -390,6 +390,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorDetail'
 
+  /auth/password:
+    patch:
+      tags:
+        - auth
+      summary: Change user password
+      description: Updates the user's password after validating the current password. Requires authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+            example:
+              current_password: "oldpassword123"
+              new_password: "newpassword456"
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangePasswordResponse'
+        '401':
+          description: Not authenticated or session invalid/expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: Validation error (current password incorrect, new password too short, user has no password)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+
   /users/me:
     patch:
       tags:
@@ -1468,6 +1509,29 @@ components:
           type: string
           format: uuid
           nullable: true
+
+    ChangePasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          description: Current password for verification
+        new_password:
+          type: string
+          minLength: 10
+          description: New password (minimum 10 characters)
+
+    ChangePasswordResponse:
+      type: object
+      required:
+        - ok
+      properties:
+        ok:
+          type: boolean
+          description: Indicates successful password change
 
     UpdateUserRequest:
       type: object

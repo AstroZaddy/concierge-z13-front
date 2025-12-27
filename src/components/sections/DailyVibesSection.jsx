@@ -181,6 +181,22 @@ export function DailyVibesSection() {
   return (
     <section className="py-12 px-4">
       <div className="max-w-7xl mx-auto">
+        {/* Today's Action */}
+        {actionText && aspectIdentifier && (
+          <div className="mb-12 p-8 rounded-xl bg-white/5 border border-yellow-500/30 backdrop-blur-sm relative">
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-yellow-500/5 to-orange-500/5 pointer-events-none"></div>
+            <div className="relative text-center">
+              <p className="text-gray-400 mb-3">Today's action:</p>
+              <p className="text-xl md:text-2xl font-medium text-yellow-400 mb-2">
+                {actionText}
+              </p>
+              <p className="text-sm text-gray-500">
+                {aspectIdentifier}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Big Influences Section */}
         <div className="mb-12 p-8 rounded-xl bg-white/5 border border-purple-500/30 backdrop-blur-sm relative">
           <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-purple-500/5 to-cyan-500/5 pointer-events-none"></div>
@@ -203,19 +219,6 @@ export function DailyVibesSection() {
                 onFetchInterpretation={fetchInterpretation}
               />
             </div>
-
-            {/* Today's Action */}
-            {actionText && aspectIdentifier && (
-              <div className="mt-8 text-center">
-                <p className="text-gray-400 mb-3">Today's action:</p>
-                <p className="text-xl md:text-2xl font-medium text-yellow-400 mb-2">
-                  {actionText}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {aspectIdentifier}
-                </p>
-              </div>
-            )}
           </div>
         </div>
 

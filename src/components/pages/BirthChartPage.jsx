@@ -1,12 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { NeonButton } from "../ui/NeonButton";
+import { Modal } from "../ui/Modal";
 import { useUserData } from "../../contexts/UserDataContext";
+import { useSessionBootstrap } from "../../contexts/SessionBootstrapContext";
 
 // Use relative /api path for client-side calls (works through Caddy proxy)
 const API_BASE_URL = "/api";
 const STORAGE_KEY = "z13-zodiac-mode";
 
-export function BirthChartPage() {
+export function BirthChartPage({ pageMode = "create" }) {
+  // pageMode: "create" (with form) or "view" (view-only, loads default chart)
+  const isViewMode = pageMode === "view";
+  
   // Zodiac mode state - sync with global toggle
   const [mode, setModeState] = useState("z13");
   const [mounted, setMounted] = useState(false);
@@ -31,6 +36,12 @@ export function BirthChartPage() {
   const [savingChart, setSavingChart] = useState(false);
   const [chartSaved, setChartSaved] = useState(false);
   const [chartJustCreated, setChartJustCreated] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [savedChartName, setSavedChartName] = useState("");
+  
+  // Chart switching state
+  const [showSwitchChartModal, setShowSwitchChartModal] = useState(false);
+  const [loadingChart, setLoadingChart] = useState(false);
 
   // Interpretations state
   const [interpretations, setInterpretations] = useState({});
@@ -41,7 +52,29 @@ export function BirthChartPage() {
   const [formExpanded, setFormExpanded] = useState(true);
 
   // Use user data from context
-  const { isAuthenticated, authChecked, defaultNatal, refreshNatalData } = useUserData();
+  const { defaultNatal, refreshNatalData } = useUserData();
+  
+  // Use session bootstrap to get charts list, user info, and auth status
+  // Note: This hook will throw if not within SessionBootstrapProvider
+  // Since BirthChartPage is loaded via ClientLayoutWrapper which includes the provider,
+  // this should always be available
+  const sessionBootstrap = useSessionBootstrap();
+  const chartsList = sessionBootstrap?.chartsList || null;
+  const sessionUser = sessionBootstrap?.user || null;
+  const defaultChart = sessionBootstrap?.defaultChart || null;
+  // Get auth status from SessionBootstrapContext (more reliable than UserDataContext)
+  const sessionState = sessionBootstrap?.sessionState || "anonymous";
+  const hasCheckedAuth = sessionBootstrap?.hasCheckedAuth || false;
+  const isAuthenticated = sessionState === "authenticated_has_chart" || sessionState === "authenticated_no_chart";
+  const hasDefaultChart = sessionState === "authenticated_has_chart";
+  
+  // #region agent log
+  useEffect(() => {
+    const logData = {location:'BirthChartPage.jsx:63',message:'Auth state check',data:{sessionState,hasCheckedAuth,isAuthenticated,chartsListLength:chartsList?.length||0,chartsListIsArray:Array.isArray(chartsList)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'};
+    console.log('[DEBUG HYPOTHESIS A] Auth state:', logData.data);
+    fetch('http://localhost:7243/ingest/f17bd783-4962-4fda-be14-f991ec221a3b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData)}).catch(()=>{});
+  }, [sessionState, hasCheckedAuth, isAuthenticated, chartsList]);
+  // #endregion
 
   // Debounce timer for location search
   const locationSearchTimeoutRef = useRef(null);
@@ -49,15 +82,161 @@ export function BirthChartPage() {
   // Saved natal data state (using defaultNatal from context)
   const savedNatalData = defaultNatal;
   const [loadingSavedChart, setLoadingSavedChart] = useState(false);
+  const [currentViewedChart, setCurrentViewedChart] = useState(null); // Track which chart is currently being viewed
 
-  // Load saved chart when defaultNatal is available
+  // Load default chart from context (view mode)
+  const loadDefaultChartFromContext = () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const chart = defaultChart;
+      if (!chart) {
+        setError("No chart data available");
+        setLoading(false);
+        return;
+      }
+
+      // Convert chart to display format (same logic as loadSavedChart)
+      const convertChartToDisplayFormat = (chartData, zodiacMode) => {
+        const computed = chartData.computed;
+        const positions = (computed.positions || [])
+          .filter(pos => pos.kind === "body" || pos.kind === "point")
+          .map((pos) => {
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                placement = {
+                  sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              body: pos.key,
+              longitude: pos.lon_deg,
+              latitude: pos.lat_deg || 0,
+              placement,
+            };
+          });
+
+        const angles = (computed.positions || [])
+          .filter(pos => pos.kind === "angle")
+          .map((pos) => {
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                placement = {
+                  sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              angle: pos.key,
+              longitude: pos.lon_deg,
+              placement,
+            };
+          });
+
+        return {
+          positions,
+          angles,
+          metadata: {
+            mode: zodiacMode,
+            datetime_local: chartData.input.datetime_utc,
+            datetime_utc: chartData.input.datetime_utc,
+            location: {
+              latitude: chartData.input.lat,
+              longitude: chartData.input.lon,
+              timezone: chartData.input.timezone,
+              name: chartData.input.place_name || "",
+            },
+          },
+        };
+      };
+
+      const computedMode = chart.computed.mode;
+      if (computedMode === "both") {
+        const z13Chart = convertChartToDisplayFormat(chart, "z13");
+        const tropicalChart = convertChartToDisplayFormat(chart, "tropical");
+        setNatalZ13(z13Chart);
+        setNatalTropical(tropicalChart);
+      } else {
+        const chartData = convertChartToDisplayFormat(chart, computedMode);
+        if (computedMode === "z13") {
+          setNatalZ13(chartData);
+          setNatalTropical({ ...chartData, metadata: { ...chartData.metadata, mode: "tropical" } });
+        } else {
+          setNatalTropical(chartData);
+          setNatalZ13({ ...chartData, metadata: { ...chartData.metadata, mode: "z13" } });
+        }
+      }
+
+      // Set chart name from defaultChart
+      if (chart.meta?.name) {
+        setName(chart.meta.name);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error("Error processing default chart:", err);
+      setError(err.message || "Failed to process chart");
+      setLoading(false);
+    }
+  };
+
+  // In view mode, load default chart from context
   useEffect(() => {
-    if (!isAuthenticated || !defaultNatal) {
+    if (!isViewMode || !mounted || !hasCheckedAuth) {
+      return;
+    }
+
+    if (!hasDefaultChart || !defaultChart) {
+      setLoading(false);
+      return;
+    }
+
+    loadDefaultChartFromContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isViewMode, mounted, hasCheckedAuth, hasDefaultChart, defaultChart]);
+
+  // Redirect logic for view mode
+  useEffect(() => {
+    if (!isViewMode || !mounted || !hasCheckedAuth) return;
+    
+    if (isAuthenticated && !hasDefaultChart) {
+      // Redirect authenticated users without default chart to create page
+      window.location.href = "/natal/create";
+    }
+  }, [isViewMode, mounted, hasCheckedAuth, hasDefaultChart, isAuthenticated]);
+
+  // Load saved chart when defaultNatal is available (create mode only)
+  useEffect(() => {
+    if (isViewMode || !isAuthenticated || !defaultNatal) {
       return;
     }
 
     loadSavedChart();
-  }, [isAuthenticated, defaultNatal]);
+  }, [isViewMode, isAuthenticated, defaultNatal]);
 
   // Load saved natal chart from snapshot
   const loadSavedChart = async () => {
@@ -100,7 +279,7 @@ export function BirthChartPage() {
         birth_timezone: chart.input.timezone,
         is_default: chart.meta.is_default,
       };
-      setSavedNatalData(chartMeta);
+      setCurrentViewedChart(chartMeta);
 
       // Convert chart computed positions to format expected by chart display
       const convertChartToDisplayFormat = (chartData, zodiacMode) => {
@@ -314,7 +493,13 @@ export function BirthChartPage() {
 
   // Get current natal data based on mode
   const currentNatal = useMemo(() => {
-    return mode === "z13" ? natalZ13 : natalTropical;
+    const result = mode === "z13" ? natalZ13 : natalTropical;
+    // #region agent log
+    const logData = {location:'BirthChartPage.jsx:339',message:'currentNatal computed',data:{mode,hasNatalZ13:!!natalZ13,hasNatalTropical:!!natalTropical,hasCurrentNatal:!!result},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'};
+    console.log('[DEBUG HYPOTHESIS B] currentNatal:', logData.data);
+    fetch('http://localhost:7243/ingest/f17bd783-4962-4fda-be14-f991ec221a3b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData)}).catch(()=>{});
+    // #endregion
+    return result;
   }, [mode, natalZ13, natalTropical]);
 
   // Extract Big Three from current natal data
@@ -623,6 +808,8 @@ export function BirthChartPage() {
 
       console.log("Natal data saved successfully");
       setChartSaved(true);
+      setSavedChartName(chartPayload.name);
+      setShowSaveModal(true);
       
       // Refresh natal data in context
       await refreshNatalData();
@@ -1310,18 +1497,38 @@ export function BirthChartPage() {
     return `/natal/transits?${params.toString()}`;
   }, [currentNatal, natalLongitudes, savedNatalData, name]);
 
-  if (!mounted) {
-    return null; // SSR safety
-  }
-
+  // Compute modeLabel - simple value, safe to compute before early returns
   const modeLabel = mode === "z13" ? "Z13 (true-sky)" : "Tropical";
-  const allInterpretationsLoaded =
-    bigThree.sun && getInterpretation("planet", "Sun", getSign(bigThree.sun.placement)) &&
-    bigThree.moon && getInterpretation("planet", "Moon", getSign(bigThree.moon.placement)) &&
-    bigThree.ascendant && getInterpretation("angle", "Ascendant", getSign(bigThree.ascendant.placement));
 
-  // Format birth information for display
-  const formatBirthInfo = () => {
+  // Compute birthInfo as useMemo BEFORE early returns to ensure it's always available
+  // This must be a hook to ensure it's always called in the same order
+  const birthInfo = useMemo(() => {
+    // In view mode, use defaultChart
+    if (isViewMode && defaultChart) {
+      const info = [];
+      if (defaultChart.meta?.name) {
+        info.push({ label: "Name", value: defaultChart.meta.name });
+      }
+      if (defaultChart.input?.datetime_utc) {
+        const birthDate = new Date(defaultChart.input.datetime_utc);
+        const dateStr = birthDate.toLocaleDateString("en-US", { 
+          year: "numeric", month: "long", day: "numeric" 
+        });
+        info.push({ label: "Date of Birth", value: dateStr });
+        if (defaultChart.input.birth_time_provided) {
+          const timeStr = birthDate.toLocaleTimeString("en-US", { 
+            hour: "2-digit", minute: "2-digit" 
+          });
+          info.push({ label: "Time", value: timeStr });
+        }
+      }
+      if (defaultChart.input?.place_name) {
+        info.push({ label: "Location", value: defaultChart.input.place_name });
+      }
+      return info;
+    }
+    
+    // In create mode, use existing logic
     if (!currentNatal) return null;
     
     const metadata = currentNatal.metadata;
@@ -1338,7 +1545,7 @@ export function BirthChartPage() {
       locationName = locationInput;
     }
     
-    const birthData = savedNatalData || (metadata ? {
+    const birthData = currentViewedChart || savedNatalData || (metadata ? {
       name: name || "Unknown",
       birth_datetime_utc: metadata.datetime_utc || metadata.datetime_local,
       birth_time_provided: metadata.datetime_utc ? metadata.datetime_utc.includes('T') && !metadata.datetime_utc.endsWith('T12:00:00') : false,
@@ -1388,23 +1595,383 @@ export function BirthChartPage() {
     }
     
     return info;
-  };
+  }, [isViewMode, defaultChart, currentNatal, selectedLocation, locationInput, currentViewedChart, savedNatalData, name]);
 
-  const birthInfo = formatBirthInfo();
+  // Determine chart limit and whether user can save (MUST be before useEffect that uses them)
+  // If chartsList is not loaded yet, default to allowing save (API will enforce limit)
+  const planType = sessionUser?.plan_type || "free";
+  const maxCharts = planType === "premium" ? 999 : 3; // Free plan: 3 charts, Premium: effectively unlimited
+  const currentChartCount = Array.isArray(chartsList) ? chartsList.length : 0;
+  // Only show limit message if we have chartsList data and limit is reached
+  // Otherwise, show button and let API handle limit check
+  const hasReachedLimit = Array.isArray(chartsList) && currentChartCount >= maxCharts;
+  
+  // Determine if user has multiple charts (for switch chart button)
+  // If chartsList is not loaded yet but user is viewing a chart, assume they might have multiple
+  const hasMultipleCharts = Array.isArray(chartsList) && chartsList.length > 1;
+  
+  // For "Add another chart", show if not at limit
+  // If chartsList is null/not loaded yet, show the button (API will enforce limit)
+  // Only hide if we know for certain they've reached the limit
+  const canAddChart = !hasReachedLimit;
+
+  // #region agent log - MUST be before early returns
+  useEffect(() => {
+    const logData = {location:'BirthChartPage.jsx:1417',message:'birthInfo check',data:{hasBirthInfo:!!birthInfo,birthInfoLength:birthInfo?.length||0,hasCurrentNatal:!!currentNatal,hasMultipleCharts,canAddChart,hasReachedLimit,chartsListLength:chartsList?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'};
+    console.log('[DEBUG HYPOTHESIS C] birthInfo and button conditions:', logData.data);
+    fetch('http://localhost:7243/ingest/f17bd783-4962-4fda-be14-f991ec221a3b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(logData)}).catch(()=>{});
+  }, [birthInfo, currentNatal, hasMultipleCharts, canAddChart, hasReachedLimit, chartsList]);
+  // #endregion
+
+  if (!mounted) {
+    return (
+      <section className="min-h-screen px-4 pt-28 pb-20">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </section>
+    );
+  }
+
+  // View mode: Show message for unauthenticated users
+  if (isViewMode && !hasCheckedAuth) {
+    return (
+      <section className="min-h-screen px-4 pt-28 pb-20">
+        <div className="max-w-6xl mx-auto text-center">
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (isViewMode && !isAuthenticated) {
+    return (
+      <section className="min-h-screen px-4 pt-28 pb-20">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-8 p-6 rounded-xl bg-white/5 border border-cyan-500/40 backdrop-blur-sm">
+            <h2 className="text-xl font-bold text-gray-100 mb-4">Birth Chart</h2>
+            <p className="text-gray-200 text-lg text-center mb-4">
+              Please <a href="/login" className="text-neon-cyan hover:text-neon-purple transition-colors underline">log in</a> or <a href="/register" className="text-neon-cyan hover:text-neon-purple transition-colors underline">create an account</a> to view your birth chart.
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (isViewMode && !currentNatal) {
+    // For authenticated users without a chart, show a message
+    if (isAuthenticated && !hasDefaultChart) {
+      return (
+        <section className="min-h-screen px-4 pt-28 pb-20">
+          <div className="max-w-6xl mx-auto">
+            <div className="mb-8 p-6 rounded-xl bg-white/5 border border-cyan-500/40 backdrop-blur-sm">
+              <h2 className="text-xl font-bold text-gray-100 mb-4">Birth Chart</h2>
+              <p className="text-gray-200 text-lg text-center mb-4">
+                You don't have a default chart set. <a href="/natal/create" className="text-neon-cyan hover:text-neon-purple transition-colors underline">Create one now</a>.
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+    return null;
+  }
+
+  // Compute allInterpretationsLoaded AFTER helper functions are defined
+  const allInterpretationsLoaded =
+    bigThree.sun && getInterpretation("planet", "Sun", getSign(bigThree.sun.placement)) &&
+    bigThree.moon && getInterpretation("planet", "Moon", getSign(bigThree.moon.placement)) &&
+    bigThree.ascendant && getInterpretation("angle", "Ascendant", getSign(bigThree.ascendant.placement));
+
+  // formatBirthInfo is now computed inline above before early returns
+  // All variables (birthInfo, planType, maxCharts, etc.) are already computed above
+  // The debug log useEffect is now before early returns (moved above)
+  
+  // Get current chart ID (if viewing a saved chart)
+  const currentChartId = currentViewedChart?.id || savedNatalData?.id || null;
+  
+  // Load a specific chart by ID
+  const loadChartById = async (chartId) => {
+    try {
+      setLoadingChart(true);
+      setError(null);
+      
+      const chartResponse = await fetch(`${API_BASE_URL}/charts/${chartId}`, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!chartResponse.ok) {
+        throw new Error("Failed to load chart");
+      }
+
+      const chartData = await chartResponse.json();
+      const chart = chartData.chart;
+      
+      if (!chart) {
+        throw new Error("No chart data in response");
+      }
+
+      // Store chart metadata for reference
+      const chartMeta = {
+        id: chart.meta.id,
+        name: chart.meta.name,
+        birth_datetime_utc: chart.input.datetime_utc,
+        birth_time_provided: chart.input.birth_time_provided,
+        birth_place_name: chart.input.place_name || "",
+        birth_lat: chart.input.lat,
+        birth_lon: chart.input.lon,
+        birth_timezone: chart.input.timezone,
+        is_default: chart.meta.is_default,
+      };
+      setSavedNatalData(chartMeta);
+
+      // Convert chart computed positions to format expected by chart display
+      const convertChartToDisplayFormat = (chartData, zodiacMode) => {
+        const computed = chartData.computed;
+        const positions = (computed.positions || [])
+          .filter(pos => pos.kind === "body" || pos.kind === "point")
+          .map((pos) => {
+            // Handle placement - can be PlacementCore or PlacementBoth
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                // PlacementBoth - select based on zodiacMode
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                // PlacementCore
+                placement = {
+                  sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              body: pos.key,
+              longitude: pos.lon_deg,
+              placement: placement,
+            };
+          });
+
+        const angles = (computed.positions || [])
+          .filter(pos => pos.kind === "angle")
+          .map((pos) => {
+            let placement = null;
+            if (pos.placement) {
+              if (pos.placement.z13 && pos.placement.tropical) {
+                const selectedPlacement = zodiacMode === "z13" ? pos.placement.z13 : pos.placement.tropical;
+                placement = {
+                  sign: selectedPlacement.sign,
+                  sign_degree: selectedPlacement.deg_in_sign,
+                  label: `${selectedPlacement.sign} ${selectedPlacement.deg_in_sign.toFixed(2)}°`,
+                };
+              } else {
+                placement = {
+                  sign: pos.placement.sign,
+                  sign_degree: pos.placement.deg_in_sign,
+                  label: `${pos.placement.sign} ${pos.placement.deg_in_sign.toFixed(2)}°`,
+                };
+              }
+            }
+
+            return {
+              angle: pos.key,
+              longitude: pos.lon_deg,
+              placement: placement,
+            };
+          });
+
+        return {
+          positions: positions,
+          angles: angles,
+          metadata: {
+            name: chartData.meta.name,
+            id: chartData.meta.id,
+            mode: zodiacMode,
+          },
+        };
+      };
+
+      // Set chart data for both systems
+      const computedMode = chart.computed.mode;
+      if (computedMode === "both") {
+        const z13Chart = convertChartToDisplayFormat(chart, "z13");
+        const tropicalChart = convertChartToDisplayFormat(chart, "tropical");
+        setNatalZ13(z13Chart);
+        setNatalTropical(tropicalChart);
+      } else {
+        const chartData = convertChartToDisplayFormat(chart, computedMode);
+        if (computedMode === "z13") {
+          setNatalZ13(chartData);
+          setNatalTropical({ ...chartData, metadata: { ...chartData.metadata, mode: "tropical" } });
+        } else {
+          setNatalTropical(chartData);
+          setNatalZ13({ ...chartData, metadata: { ...chartData.metadata, mode: "z13" } });
+        }
+      }
+
+      // Pre-fill form with saved data
+      setName(chart.meta.name || "");
+      
+      const birthDate = new Date(chart.input.datetime_utc);
+      const localDate = chart.input.timezone 
+        ? new Date(birthDate.toLocaleString("en-US", { timeZone: chart.input.timezone }))
+        : birthDate;
+      setBirthDate(localDate.toISOString().split('T')[0]);
+      
+      if (chart.input.birth_time_provided) {
+        const hours = String(localDate.getHours()).padStart(2, '0');
+        const minutes = String(localDate.getMinutes()).padStart(2, '0');
+        setBirthTime(`${hours}:${minutes}`);
+        setTimeUnknown(false);
+      } else {
+        setTimeUnknown(true);
+      }
+
+      setSelectedLocation({
+        city: (chart.input.place_name || "").split(',')[0] || chart.input.place_name || "",
+        region: null,
+        country: null,
+        latitude: chart.input.lat,
+        longitude: chart.input.lon,
+        timezone: chart.input.timezone,
+      });
+      setLocationInput(chart.input.place_name || "");
+
+      setShowSwitchChartModal(false);
+    } catch (err) {
+      console.error("Error loading chart:", err);
+      setError("Failed to load chart. Please try again.");
+    } finally {
+      setLoadingChart(false);
+    }
+  };
+  
+  // Handle "Add another chart" - redirect to create page or clear form
+  const handleAddAnotherChart = () => {
+    // If in view mode, redirect to create page to show the form
+    if (isViewMode) {
+      window.location.href = "/natal/create";
+      return;
+    }
+    
+    // If in create mode, clear form and reset state
+    setName("");
+    setBirthDate("");
+    setBirthTime("");
+    setTimeUnknown(false);
+    setLocationInput("");
+    setSelectedLocation(null);
+    setNatalZ13(null);
+    setNatalTropical(null);
+    setChartSaved(false);
+    setChartJustCreated(false);
+    setCurrentViewedChart(null);
+    setFormExpanded(true);
+    setError(null);
+  };
 
   return (
     <section className="min-h-screen px-4 pt-28 pb-20">
       <div className="max-w-6xl mx-auto">
+        {/* Debug: Always visible at top */}
+        <div className="mb-4 p-3 bg-yellow-900/50 border-2 border-yellow-500 text-xs text-yellow-100 font-mono">
+          <div>DEBUG: birthInfo={birthInfo ? `Array(${birthInfo.length})` : 'null'}</div>
+          <div>currentNatal={currentNatal ? 'EXISTS' : 'NULL'}</div>
+          <div>isAuthenticated={String(isAuthenticated)}</div>
+          <div>sessionState={sessionState}</div>
+          <div>hasMultipleCharts={String(hasMultipleCharts)}</div>
+          <div>canAddChart={String(canAddChart)}</div>
+          <div>chartsList={chartsList ? `Array(${chartsList.length})` : 'null'}</div>
+          <div>hasReachedLimit={String(hasReachedLimit)}</div>
+          <div>birthInfo&&length={birthInfo && birthInfo.length > 0 ? 'true' : 'false'}</div>
+          <div>willRenderBirthInfo={birthInfo && birthInfo.length > 0 && currentNatal ? 'YES' : 'NO'}</div>
+        </div>
+        
         {/* Header */}
         <div className="text-center mb-12">
+          <div className="text-red-500 font-bold mb-2">DEBUG MODE ACTIVE</div>
           <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            <span className="gradient-text">Birth Chart</span>
+            <span className="gradient-text">
+              {(() => {
+                // Get chart name from birthInfo (which uses savedNatalData or form name)
+                const chartName = birthInfo?.find(item => item.label === "Name")?.value || name;
+                return chartName ? `Birth Chart for ${chartName}` : "Birth Chart";
+              })()}
+            </span>
           </h1>
           <p className="text-gray-400 text-sm md:text-base">
             Mode: <span className="text-neon-cyan font-semibold">{modeLabel}</span>
           </p>
           {loadingSavedChart && (
             <p className="text-gray-400 text-sm mt-2">Loading your saved chart...</p>
+          )}
+        </div>
+
+        {/* Debug: Show values before Birth Information conditional */}
+        <div className="mb-4 p-2 bg-yellow-900/30 border border-yellow-500/50 text-xs text-yellow-200">
+          DEBUG: birthInfo={birthInfo ? `Array(${birthInfo.length})` : 'null'}, currentNatal={currentNatal ? 'exists' : 'null'}, isAuthenticated={String(isAuthenticated)}, sessionState={sessionState}, hasMultipleCharts={String(hasMultipleCharts)}, canAddChart={String(canAddChart)}, chartsList={chartsList ? `Array(${chartsList.length})` : 'null'}
+        </div>
+
+        {/* Switch Chart / Add Chart Buttons - OUTSIDE conditional so they always render */}
+        <div className="mb-6 p-4 bg-blue-900/30 border-2 border-blue-500 rounded">
+          <div className="text-sm text-blue-200 font-bold mb-2">🔍 BUTTON DEBUG INFO:</div>
+          <div className="text-xs text-blue-100 space-y-1 font-mono">
+            <div>isAuthenticated: {String(isAuthenticated)}</div>
+            <div>sessionState: {sessionState}</div>
+            <div>hasCheckedAuth: {String(hasCheckedAuth)}</div>
+            <div>currentNatal: {currentNatal ? 'EXISTS' : 'NULL'}</div>
+            <div>birthInfo: {birthInfo ? `Array(${birthInfo.length})` : 'null'}</div>
+            <div>hasMultipleCharts: {String(hasMultipleCharts)}</div>
+            <div>canAddChart: {String(canAddChart)}</div>
+            <div>hasReachedLimit: {String(hasReachedLimit)}</div>
+            <div>chartsList: {chartsList ? `Array(${chartsList.length})` : 'null'}</div>
+          </div>
+          {isAuthenticated && currentNatal && (
+            <div className="mt-3 flex flex-wrap gap-3 justify-center">
+              {hasMultipleCharts && (
+                <NeonButton
+                  onClick={() => setShowSwitchChartModal(true)}
+                  className="px-6 py-3"
+                >
+                  Switch Chart
+                </NeonButton>
+              )}
+              {canAddChart && (
+                <NeonButton
+                  onClick={handleAddAnotherChart}
+                  className="px-6 py-3"
+                >
+                  Add another chart
+                </NeonButton>
+              )}
+              {!hasMultipleCharts && !canAddChart && (
+                <div className="text-xs text-yellow-300 p-2 bg-yellow-900/30 rounded">
+                  ⚠️ No buttons: hasMultipleCharts=false, canAddChart=false
+                </div>
+              )}
+            </div>
+          )}
+          {!isAuthenticated && (
+            <div className="mt-3 text-xs text-red-300 bg-red-900/30 p-2 rounded">
+              ❌ Buttons hidden: isAuthenticated=false (sessionState: {sessionState})
+            </div>
+          )}
+          {!currentNatal && (
+            <div className="mt-3 text-xs text-red-300 bg-red-900/30 p-2 rounded">
+              ❌ Buttons hidden: currentNatal is NULL
+            </div>
           )}
         </div>
 
@@ -1420,11 +1987,38 @@ export function BirthChartPage() {
                 </div>
               ))}
             </div>
+            
+            {/* Save Chart Button or Limit Message */}
+            {hasCheckedAuth && isAuthenticated && currentNatal && (
+              <>
+                {hasReachedLimit ? (
+                  <div className="mt-6 pt-6 border-t border-gray-700/40">
+                    <p className="text-gray-400 text-sm text-center">
+                      You have reached your maximum for stored charts. Stored charts can be managed from the{' '}
+                      <a href="/account" className="text-neon-cyan hover:text-neon-purple transition-colors underline">
+                        Account
+                      </a>
+                      {' '}page
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-6 pt-6 border-t border-gray-700/40 flex justify-center">
+                    <NeonButton
+                      onClick={handleSaveChart}
+                      disabled={savingChart || chartSaved}
+                      className="px-6 py-3"
+                    >
+                      {savingChart ? "Saving..." : chartSaved ? "Saved" : "Save this chart"}
+                    </NeonButton>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
         {/* Message for authenticated users without default chart */}
-        {authChecked && isAuthenticated && !defaultNatal && !currentNatal && !loading && (
+        {hasCheckedAuth && isAuthenticated && !defaultNatal && !currentNatal && !loading && (
           <div className="mb-8 p-6 rounded-xl bg-white/5 border border-cyan-500/40 backdrop-blur-sm">
             <p className="text-gray-200 text-lg text-center">
               You have not set a default chart. Enter the following to create a birth chart.
@@ -1432,7 +2026,8 @@ export function BirthChartPage() {
           </div>
         )}
 
-        {/* Birth Data Form */}
+        {/* Birth Data Form - Only show in create mode */}
+        {!isViewMode && (
         <div className="mb-12 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm overflow-hidden">
           {/* Form Header with Toggle */}
           <div className="p-4 flex items-center justify-between">
@@ -1581,6 +2176,7 @@ export function BirthChartPage() {
             </form>
           </div>
         </div>
+        )}
 
         {/* Error State */}
         {error && (
@@ -1591,7 +2187,7 @@ export function BirthChartPage() {
         )}
 
         {/* Save Chart Button - Above chart for newly created charts */}
-        {authChecked && isAuthenticated && currentNatal && chartJustCreated && (
+        {hasCheckedAuth && isAuthenticated && currentNatal && chartJustCreated && (
           <div className="mb-8 flex justify-center">
             <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-gray-700/40 backdrop-blur-sm">
               {chartSaved && (
@@ -1661,6 +2257,72 @@ export function BirthChartPage() {
           </div>
         )}
       </div>
+      
+      {/* Save Chart Confirmation Modal */}
+      <Modal
+        isOpen={showSaveModal}
+        onClose={() => setShowSaveModal(false)}
+        title="Chart Saved"
+      >
+        <div className="text-center">
+          <p className="text-gray-200 text-lg mb-4">
+            The chart for <span className="font-semibold text-neon-cyan">{savedChartName}</span> was saved.
+          </p>
+          <NeonButton
+            onClick={() => setShowSaveModal(false)}
+            className="px-6 py-3"
+          >
+            Close
+          </NeonButton>
+        </div>
+      </Modal>
+
+      {/* Switch Chart Modal */}
+      <Modal
+        isOpen={showSwitchChartModal}
+        onClose={() => setShowSwitchChartModal(false)}
+        title="Switch Chart"
+      >
+        <div className="space-y-4">
+          {loadingChart ? (
+            <p className="text-gray-200 text-center">Loading chart...</p>
+          ) : (
+            <>
+              <p className="text-gray-200 mb-4">
+                Select a chart to view:
+              </p>
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {(Array.isArray(chartsList) ? chartsList.filter(chart => chart.id !== currentChartId) : [])
+                  .map((chart) => (
+                    <button
+                      key={chart.id}
+                      onClick={() => loadChartById(chart.id)}
+                      className="w-full text-left p-4 rounded-lg bg-white/5 border border-gray-700/30 hover:border-neon-cyan/50 hover:bg-white/10 transition-colors"
+                    >
+                      <div className="font-semibold text-gray-100 mb-1">
+                        {chart.name}
+                      </div>
+                      <div className="text-sm text-gray-400">
+                        Created: {new Date(chart.created_at).toLocaleDateString()}
+                        {chart.is_default && (
+                          <span className="ml-2 text-neon-cyan">(Default)</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+              <div className="flex justify-end pt-4 border-t border-gray-700/40">
+                <NeonButton
+                  onClick={() => setShowSwitchChartModal(false)}
+                  className="px-4 py-2"
+                >
+                  Cancel
+                </NeonButton>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </section>
   );
 }
